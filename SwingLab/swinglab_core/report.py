@@ -121,14 +121,14 @@ def svg_sequenza(serie, F, fps, picchi):
 # ---------------------------------------------------------------------------
 
 CSS = """
-:root{--bg:#f6f4ee;--card:#fffdf8;--ink:#1d2420;--ink2:#4b5550;--muted:#8a918c;--line:#e3dfd3;
---brand:#1f5c3d;--brand2:#e9f1ea;--ok:#2f8a4f;--warn:#c98500;--bad:#c4423b;
+:root{--bg:#eef3ea;--card:#fbfcf7;--ink:#14261b;--ink2:#46574b;--muted:#84927f;--line:#d6e1d0;
+--brand:#1f5a3c;--brand2:#e2eddd;--ok:#2f8a4f;--warn:#c98500;--bad:#c4423b;
 --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--band:#2a78d633}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141816;--card:#1c211e;--ink:#eef0ec;
---ink2:#c3c8c2;--muted:#8d948e;--line:#2d3430;--brand:#7cc79a;--brand2:#22302a;--ok:#5cbf7d;--warn:#e0a52a;
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0f2b1e;--card:#163a29;--ink:#f1ecd9;
+--ink2:#c9d3c2;--muted:#8fa596;--line:#2c6a4a;--brand:#f2c94c;--brand2:#1f4a33;--ok:#5cbf7d;--warn:#e0a52a;
 --bad:#e66767;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--band:#3987e540}}
-:root[data-theme="dark"]{--bg:#141816;--card:#1c211e;--ink:#eef0ec;--ink2:#c3c8c2;--muted:#8d948e;--line:#2d3430;
---brand:#7cc79a;--brand2:#22302a;--ok:#5cbf7d;--warn:#e0a52a;--bad:#e66767;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--band:#3987e540}
+:root[data-theme="dark"]{--bg:#0f2b1e;--card:#163a29;--ink:#f1ecd9;--ink2:#c9d3c2;--muted:#8fa596;--line:#2c6a4a;
+--brand:#f2c94c;--brand2:#1f4a33;--ok:#5cbf7d;--warn:#e0a52a;--bad:#e66767;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--band:#3987e540}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
 font:16px/1.55 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 .wrap{max-width:980px;margin:0 auto;padding:28px 16px 60px}

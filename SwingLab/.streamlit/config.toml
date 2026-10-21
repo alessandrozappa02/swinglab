@@ -5,4 +5,9 @@ maxUploadSize = 200
 gatherUsageStats = false
 
 [theme]
-primaryColor = "#1f5c3d"
+base = "dark"
+primaryColor = "#f2c94c"            # bandierina
+backgroundColor = "#0f2b1e"         # fairway
+secondaryBackgroundColor = "#163a29" # rough
+textColor = "#f1ecd9"               # sabbia chiara
+font = "sans serif"

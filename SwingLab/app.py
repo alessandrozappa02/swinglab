@@ -16,11 +16,69 @@ from swinglab_core import video as V
 
 st.set_page_config(page_title="SwingLab", page_icon="⛳", layout="wide")
 
-st.markdown("""
-<style>
-.block-container{padding-top:2rem;max-width:1150px}
-h1{font-family:Georgia,serif}
-.guida{border:1px solid rgba(128,128,128,.25);border-radius:12px;padding:10px 12px;font-size:14px}
+# ---------------------------------------------------------------------------
+# Tema "fairway": verde campo, crema sabbia, giallo bandierina
+# ---------------------------------------------------------------------------
+# Fraunces (titoli) + Figtree (testo); colori nel blocco :root
+st.markdown("""<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Figtree:wght@400;500;600;700&display=swap');
+:root{
+--fairway:#0f2b1e;
+--rough:#163a29;
+--green:#1f5a3c;
+--linea:#2c6a4a;
+--crema:#f1ecd9;
+--crema2:#c9d3c2;
+--flag:#f2c94c;
+--palla:#ffffff;
+--display:"Fraunces",Georgia,serif;
+--testo:"Figtree","Segoe UI",system-ui,sans-serif;
+}
+html, body, [class*="css"], .stMarkdown, p, li, label, input, textarea, button {font-family:var(--testo)}
+[data-testid="stAppViewContainer"]{
+background:
+repeating-linear-gradient(90deg, rgba(255,255,255,.022) 0 90px, rgba(0,0,0,.035) 90px 180px),
+radial-gradient(1200px 500px at 70% -10%, #1d4f37 0%, transparent 60%),
+var(--fairway);
+}
+[data-testid="stHeader"]{background:transparent}
+.block-container{padding-top:1.5rem;max-width:1150px}
+[data-testid="stSidebar"]{
+background:linear-gradient(180deg,#123224 0%,#0c2318 100%);
+border-right:1px solid var(--linea);
+}
+[data-testid="stSidebar"] h2{font-family:var(--display);color:var(--crema);letter-spacing:.01em}
+h1,h2,h3{font-family:var(--display)!important;color:var(--crema)!important;text-wrap:balance}
+.sl-hero{position:relative;overflow:hidden;border-radius:18px;padding:26px 28px 22px;margin:0 0 18px;
+border:1px solid var(--linea);
+background:
+repeating-linear-gradient(115deg, rgba(255,255,255,.05) 0 34px, rgba(255,255,255,0) 34px 68px),
+linear-gradient(135deg,#1f5a3c 0%,#174530 55%,#123a28 100%)}
+.sl-hero .eyebrow{font:600 12px/1 var(--testo);letter-spacing:.18em;text-transform:uppercase;color:var(--flag)}
+.sl-hero h1{font-size:44px;line-height:1.05;margin:.35rem 0 .4rem;padding:0}
+.sl-hero p{color:var(--crema2);margin:0;max-width:46ch;font-size:16px}
+.sl-hero .stats{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:13px;color:var(--crema2)}
+.sl-hero .stats b{color:var(--crema);font-variant-numeric:tabular-nums}
+.sl-hero svg.pin{position:absolute;right:26px;bottom:-6px;height:150px;opacity:.95}
+@media (max-width:700px){.sl-hero svg.pin{height:90px;right:10px;opacity:.5}.sl-hero h1{font-size:34px}}
+.stTabs [data-baseweb="tab-list"]{gap:6px;border-bottom:1px solid var(--linea)}
+.stTabs [data-baseweb="tab"]{background:rgba(255,255,255,.03);border-radius:10px 10px 0 0;padding:8px 14px;color:var(--crema2)}
+.stTabs [aria-selected="true"]{background:var(--rough);color:var(--crema)!important}
+.stTabs [data-baseweb="tab-highlight"]{background:var(--flag)}
+[data-testid="stFileUploaderDropzone"]{background:rgba(31,90,60,.35);border:1.5px dashed #4f8f6b;border-radius:14px}
+[data-testid="stFileUploaderDropzone"]:hover{border-color:var(--flag)}
+.sl-tee{display:flex;align-items:flex-start;gap:8px;font-weight:600;color:var(--crema);margin:4px 0 6px;min-height:52px;line-height:1.35}
+.sl-tee .bollo{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;
+background:var(--palla);color:var(--fairway);font:700 13px/1 var(--testo);
+box-shadow:inset -3px -3px 0 rgba(0,0,0,.08)}
+.stButton>button,.stDownloadButton>button{border-radius:999px;font-weight:600;padding:.5rem 1.2rem;
+border:1px solid var(--linea)}
+.stButton>button[kind="primary"]{color:#1b2a12;box-shadow:0 2px 0 #b8902a}
+.stButton>button:focus-visible{outline:2px solid var(--flag);outline-offset:2px}
+.stButton>button:disabled{background:rgba(255,255,255,.06)!important;color:var(--crema2)!important;border:1px dashed var(--linea)!important;box-shadow:none!important;opacity:1}
+[data-testid="stAlert"]{border-radius:12px}
+.guida{border:1px solid var(--linea);background:rgba(255,255,255,.04);border-radius:12px;padding:10px 12px;font-size:14px;color:var(--crema2)}
+iframe{border-radius:16px;border:1px solid var(--linea)!important;background:#f3f6ef}
 </style>""", unsafe_allow_html=True)
 
 
@@ -41,7 +99,7 @@ def svg_posizione(vista: str, mancino: bool) -> str:
   <circle cx="160" cy="105" r="5" fill="#fff"/>
   <ellipse cx="160" cy="72" rx="26" ry="13" fill="#d8d2c2"/>
   <circle cx="160" cy="72" r="9" fill="#8a7f6b"/>
-  <text x="160" y="50" fill="#e9e3c9" font-size="11" text-anchor="middle">golfer</text>
+  <text x="196" y="76" fill="#e9e3c9" font-size="11">golfer</text>
   <rect x="{cam[0]-9}" y="{cam[1]-14}" width="18" height="28" rx="4" fill="#ffd25e" stroke="#1d2420"/>
   <text x="{cam[0]}" y="{cam[1] + (28 if cam[1] < 100 else -20) - (6 if vista == 'C' else 0)}"
         fill="#ffd25e" font-size="12" font-weight="700" text-anchor="middle">{vista}</text>
@@ -87,8 +145,25 @@ launch = {k: v for k, v in {
 profilo = pipeline.Profilo(mancino=mancino, bastone=bastone, altezza_cm=altezza,
                            handicap=hcp, launch_monitor=launch)
 
-st.title("SwingLab")
-st.caption("Carica da 1 a 3 video dello stesso swing: ricevi punteggio, stima del volo e consigli del maestro.")
+PIN_SVG = """
+<svg class="pin" viewBox="0 0 120 160" aria-hidden="true">
+  <ellipse cx="54" cy="150" rx="46" ry="9" fill="#0b2216" opacity=".55"/>
+  <ellipse cx="54" cy="148" rx="14" ry="4" fill="#06140d"/>
+  <rect x="52" y="14" width="4" height="134" rx="2" fill="#f1ecd9"/>
+  <path d="M56 16 L108 32 L56 50 Z" fill="#f2c94c"/>
+  <circle cx="84" cy="140" r="9" fill="#fff"/>
+  <circle cx="81" cy="137" r="1.2" fill="#d7d7d7"/><circle cx="86" cy="138" r="1.2" fill="#d7d7d7"/>
+  <circle cx="83" cy="142" r="1.2" fill="#d7d7d7"/><circle cx="88" cy="142" r="1.2" fill="#d7d7d7"/>
+</svg>"""
+st.markdown(f"""
+<div class="sl-hero">
+  <div class="eyebrow">Analisi dello swing · P1–P10</div>
+  <h1>SwingLab</h1>
+  <p>Carica da 1 a 3 video dello stesso swing: ricevi punteggio, stima del volo e consigli del maestro.</p>
+  <div class="stats"><span><b>23</b> metriche biomeccaniche</span><span><b>3</b> angolazioni</span>
+  <span><b>120–240</b> fps consigliati</span></div>
+  {PIN_SVG}
+</div>""", unsafe_allow_html=True)
 
 tab_analisi, tab_guida, tab_privacy = st.tabs(["Analizza", "Come riprendere lo swing", "Privacy e limiti"])
 
@@ -98,7 +173,8 @@ with tab_guida:
     cols = st.columns(3)
     for col, v in zip(cols, ("A", "B", "C")):
         with col:
-            st.markdown(f"**{v} – {C.VISTE[v]['nome']}**")
+            st.markdown(f"<div class='sl-tee'><span class='bollo'>{v}</span>{C.VISTE[v]['nome']}</div>",
+                        unsafe_allow_html=True)
             st.markdown(svg_posizione(v, mancino), unsafe_allow_html=True)
             st.markdown(f"<div class='guida'>{ISTRUZIONI[v]}</div>", unsafe_allow_html=True)
     st.markdown("""
@@ -136,7 +212,8 @@ with tab_analisi:
     caricati, fps_manuali = {}, {}
     for col, v in zip(cols, ("A", "B", "C")):
         with col:
-            st.markdown(f"**Video {v} – {C.VISTE[v]['nome']}**")
+            st.markdown(f"<div class='sl-tee'><span class='bollo'>{v}</span>{C.VISTE[v]['nome']}</div>",
+                        unsafe_allow_html=True)
             f = st.file_uploader(f"Video {v}", type=["mp4", "mov"], key=f"up_{v}",
                                  label_visibility="collapsed")
             if f:
