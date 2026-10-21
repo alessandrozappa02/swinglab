@@ -85,9 +85,9 @@ def controlli_qualita(path, info) -> list[str]:
         avvisi.append("Il video è buio: cerca più luce o riprendi all'aperto.")
     if len(grigi) >= 3:
         spost = []
-        for g in grigi[1:]:
-            (dx, dy), _ = cv2.phaseCorrelate(grigi[0], g)
-            spost.append(np.hypot(dx, dy) / grigi[0].shape[1])
+        for a, b in zip(grigi[:-1], grigi[1:]):
+            (dx, dy), _ = cv2.phaseCorrelate(a, b)
+            spost.append(np.hypot(dx, dy) / a.shape[1])
         if np.median(spost) > 0.02:
             avvisi.append("Sembra che il telefono si muova: usa un treppiede o appoggialo fermo.")
     return avvisi
@@ -98,7 +98,7 @@ def controlli_inquadratura(kp: np.ndarray, vis: np.ndarray, w: int, h: int,
     """Dopo la stima della posa: golfer intero nell'inquadratura."""
     avvisi = []
     punti = [C.NASO, C.CAVIGLIA_SX, C.CAVIGLIA_DX, C.POLSO_SX, C.POLSO_DX]
-    v = vis[i_setup, punti]
+    v = vis[i_setup, punti[:3]]          # i polsi possono essere coperti dal corpo (vista da dietro)
     xy = kp[i_setup, punti]
     fuori = (xy[:, 0] < 0.01 * w) | (xy[:, 0] > 0.99 * w) | \
             (xy[:, 1] < 0.01 * h) | (xy[:, 1] > 0.99 * h)

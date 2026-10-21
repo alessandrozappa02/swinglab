@@ -57,7 +57,10 @@ def correggi_slowmotion(tracce: dict, fps_fissati=(), avvisi=None):
             nuovo = tr.fps * f
             note[v] = (f"Rilevato uno slow motion rallentato ×{f}: frame rate reale stimato "
                        f"{nuovo:.0f} fps (il file dichiara {tr.fps:.0f}). Se non è corretto, "
-                       "indica il frame rate reale nel campo sotto il video.")
+                       "indica il frame rate reale nel campo sotto il video. Attenzione: gli slow motion "
+                       "di iPhone hanno inizio e fine a velocità normale; se il backswing parte nel tratto "
+                       "normale il ritmo risulta falsato. In Foto › Modifica trascina i cursori dello slow "
+                       "motion su tutta la clip prima di esportarla.")
             tr.fps = nuovo
             tr.kp = pulisci(tr.kp, nuovo)
             if tr.mondo is not None:
