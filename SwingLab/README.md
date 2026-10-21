@@ -46,6 +46,8 @@ Le volte successive basta l'ultimo comando.
 3. Scheda **Analizza**: carica da 1 a 3 video (mp4/mov, max 15 s, max 200 MB) e premi **Analizza lo swing**.
    Per vedere subito come funziona senza video: **Prova con uno swing dimostrativo**.
 4. Il report appare sotto e si scarica come file HTML (si apre con qualsiasi browser, anche dal telefono).
+5. Sopra il report c'è il **video commentato** (circa 25 s): lo swing al rallentatore con gli assi del corpo
+   e le correzioni scritte sul video. Si scarica in MP4.
 
 **Il report d'esempio** generato con lo swing dimostrativo è in `report_esempio.html`.
 
@@ -124,6 +126,7 @@ SwingLab/
 │  ├─ coaching.py          difetti, drill, feel, piano di allenamento
 │  ├─ annotate.py          fotogrammi annotati
 │  ├─ report.py            report HTML autonomo
+│  ├─ video_commento.py    video rallentato con assi e commento delle correzioni
 │  ├─ demo.py              swing sintetico 3D e modello di riferimento
 │  └─ pipeline.py          orchestrazione
 ├─ tests/test_motore.py

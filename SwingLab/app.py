@@ -11,7 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from swinglab_core import config as C
-from swinglab_core import demo, pipeline, report
+from swinglab_core import demo, pipeline, report, video_commento
 from swinglab_core import video as V
 
 st.set_page_config(page_title="SwingLab", page_icon="⛳", layout="wide")
@@ -165,7 +165,29 @@ def vai(pagina):
     st.rerun()
 
 
-def salva_nello_storico(ris, html_report, dimostrativo=False):
+def crea_video_commento(ris, avanzamento=None):
+    """Video rallentato con assi e commento; se qualcosa va storto l'analisi resta valida."""
+    try:
+        return video_commento.genera(ris, progress=avanzamento)
+    except Exception as exc:
+        st.warning(f"Video commentato non disponibile: {exc}")
+        return None
+
+
+def mostra_video(video_bytes, chiave):
+    if not video_bytes:
+        return
+    st.subheader("Il tuo swing commentato")
+    st.caption("Rallentatore con gli assi del corpo: le linee bianche segnano dove eri al setup, "
+               "in rosso quello che va corretto.")
+    sx, _ = st.columns([1, 1])
+    with sx:
+        st.video(video_bytes, format="video/mp4")
+        st.download_button("Scarica il video (MP4)", video_bytes, file_name="swinglab_swing_commentato.mp4",
+                           mime="video/mp4", key=f"scarica_video_{chiave}")
+
+
+def salva_nello_storico(ris, html_report, dimostrativo=False, video=None):
     import datetime as dt
     st.session_state["storico"].insert(0, dict(
         quando=dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -176,6 +198,7 @@ def salva_nello_storico(ris, html_report, dimostrativo=False):
         carry=ris["volo"]["carry"]["m"],
         dimostrativo=dimostrativo,
         report=html_report,
+        video=video,
     ))
 
 
@@ -224,6 +247,7 @@ def pagina_menu():
                     unsafe_allow_html=True)
         if st.button("Carica nuovo swing", type="primary", use_container_width=True, key="vai_carica"):
             st.session_state.pop("report", None)
+            st.session_state.pop("video", None)
             vai("analisi")
     with dx:
         st.markdown(f"""
@@ -261,6 +285,7 @@ def pagina_storico():
     j = st.session_state.get("storico_aperto")
     if j is not None and j < len(storico):
         st.subheader(f"Report del {storico[j]['quando']}")
+        mostra_video(storico[j].get("video"), f"storico_{j}")
         mostra_report(storico[j]["report"])
 
 
@@ -380,7 +405,10 @@ def pagina_analisi():
                 ris = pipeline.analizza_tracce(tr, profilo)
                 st.session_state["report"] = report.genera(ris, dimostrativo=True)
                 st.session_state["nome_report"] = "swinglab_report_dimostrativo.html"
-                salva_nello_storico(ris, st.session_state["report"], dimostrativo=True)
+            with st.spinner("Preparo il video commentato…"):
+                st.session_state["video"] = crea_video_commento(ris)
+            salva_nello_storico(ris, st.session_state["report"], dimostrativo=True,
+                                video=st.session_state["video"])
 
         if vai:
             barra = st.progress(0.0, text="Preparo i video…")
@@ -409,7 +437,9 @@ def pagina_analisi():
                         progress("Scrivo il report…", 1.0)
                         st.session_state["report"] = report.genera(ris)
                         st.session_state["nome_report"] = "swinglab_report.html"
-                        salva_nello_storico(ris, st.session_state["report"])
+                        # il video va creato qui, finché i file originali esistono ancora
+                        st.session_state["video"] = crea_video_commento(ris, progress)
+                        salva_nello_storico(ris, st.session_state["report"], video=st.session_state["video"])
                 # qui la cartella temporanea e i video sono già stati cancellati
                 barra.empty()
             except Exception as exc:  # messaggio comprensibile all'utente
@@ -417,12 +447,11 @@ def pagina_analisi():
                 st.error(f"Analisi non riuscita: {exc}")
 
         if "report" in st.session_state:
+            mostra_video(st.session_state.get("video"), "analisi")
+            st.subheader("Il report completo")
             st.download_button("Scarica il report (HTML)", st.session_state["report"],
                                file_name=st.session_state["nome_report"], mime="text/html")
-            if hasattr(st, "iframe"):          # Streamlit recenti
-                st.iframe(st.session_state["report"], height=1400)
-            else:                              # versioni precedenti
-                components.html(st.session_state["report"], height=1400, scrolling=True)
+            mostra_report(st.session_state["report"])
 
 
 
