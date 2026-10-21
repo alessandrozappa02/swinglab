@@ -77,7 +77,7 @@ with st.sidebar:
         lm_ball = st.number_input("Velocità palla (km/h)", 0.0, 350.0, 0.0, step=1.0)
         lm_carry = st.number_input("Carry (m)", 0.0, 350.0, 0.0, step=1.0)
     st.divider()
-    st.caption("Tutto gira sul tuo computer: i video non vengono inviati a nessun server.")
+    st.caption("I video servono solo per l'analisi e vengono cancellati subito dopo: non li salviamo.")
 
 mancino = mano == "Mancino"
 launch = {k: v for k, v in {
@@ -113,12 +113,16 @@ with tab_guida:
 
 with tab_privacy:
     st.markdown("""
-**Dove finiscono i tuoi video.** L'app gira sul tuo computer (indirizzo `localhost`). I video caricati
-vengono copiati in una cartella temporanea del sistema, analizzati e **cancellati subito dopo** la
-generazione del report. Nulla viene inviato a server esterni; l'unico download è il modello di posa
-di MediaPipe (una sola volta, dai server di Google). Il report scaricabile contiene fotogrammi del
-video: conservalo e condividilo come faresti con una tua foto. Le statistiche d'uso di Streamlit sono
-disattivate nel file `.streamlit/config.toml`.
+**Dove finiscono i tuoi video.**
+- **Se usi l'app dal link online** (Streamlit Community Cloud): il video viene caricato sul server che
+  ospita l'app, copiato in una cartella temporanea, analizzato e **cancellato subito dopo** la generazione
+  del report. Non viene salvato né riutilizzato. Il server è gestito da Snowflake, con sede negli Stati Uniti.
+- **Se usi l'app sul tuo PC** (`localhost`): il video non lascia mai il computer.
+
+In entrambi i casi l'unico download è il modello di posa di MediaPipe, dai server di Google. Il report
+scaricabile contiene fotogrammi del video: conservalo e condividilo come faresti con una tua foto.
+Le statistiche d'uso di Streamlit sono disattivate nel file `.streamlit/config.toml`.
+Non caricare video di altre persone senza il loro consenso (per i minori serve quello dei genitori).
 
 **Cosa l'app non può misurare da un video del telefono.** Faccia del bastone all'impatto, punto di
 contatto sulla faccia, spin e lancio reali, volo della palla. Per questo velocità, distanza e
@@ -137,16 +141,20 @@ with tab_analisi:
                                  label_visibility="collapsed")
             if f:
                 caricati[v] = f
-                fps = st.number_input("Frame rate (0 = leggi dal file)", 0, 960, 0, key=f"fps_{v}",
+                fps = st.number_input("Frame rate reale (0 = automatico)", 0, 960, 0, key=f"fps_{v}",
                                       help="Se il video slow motion è stato esportato a 30 fps, "
                                            "indica qui il frame rate reale di ripresa (es. 240).")
                 fps_manuali[v] = fps or None
 
+    if caricati and len(caricati) < 3:
+        st.warning(pipeline.AVVISO_PRECISIONE[len(caricati)])
     if caricati:
         mancanti = pipeline.analisi_mancanti(caricati.keys())
         for nome, cosa in mancanti:
             st.info(f"Senza la vista **{nome}** non posso calcolare: {cosa.lower()}.")
 
+    st.caption("Caricando un video confermi di essere la persona ripresa o di avere il suo consenso. "
+               "Il video viene cancellato a fine analisi.")
     c1, c2 = st.columns([1, 1])
     vai = c1.button("Analizza lo swing", type="primary", disabled=not caricati)
     prova = c2.button("Prova con uno swing dimostrativo")

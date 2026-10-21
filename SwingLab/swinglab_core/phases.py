@@ -103,3 +103,27 @@ def sincronizza(fasi_per_vista: dict, fps_per_vista: dict) -> dict:
     ciascuna vista rispetto a un tempo comune (impatto = 0 s)."""
     return {v: -f["indici"]["impatto"] / fps_per_vista[v]
             for v, f in fasi_per_vista.items()}
+
+
+FATTORI_SLOWMO = (2, 4, 8, 16)       # 60, 120, 240, 480 fps esportati a 30
+SWING_TIPICO_S = 1.2         # durata tipica takeaway → impatto (Tour ~1,0 s, amatori 1,1-1,5 s)
+DISCESA_MAX_REALE_S = 0.6    # in tempo reale una discesa completa non dura di più
+BACKSWING_MAX_REALE_S = 1.8  # né un backswing più di così
+
+
+def stima_fattore_slowmo(kp, fps):
+    """Restituisce di quanto il video è rallentato (1 = tempo reale).
+
+    Un video slow motion esportato "rallentato" dichiara 30 fps ma ogni
+    secondo reale dura 4-8 volte di più. I conteggi di fotogrammi di
+    backswing e discesa non dipendono dal frame rate: se in tempo reale
+    durerebbero troppo per essere veri, si sceglie il fattore che riporta la
+    durata dello swing (takeaway → impatto) al suo valore tipico.
+    """
+    i = rileva_fasi(kp, fps)["indici"]
+    n_disc = max(1, i["vmax"] - i["top"])      # il picco di velocità è a ridosso dell'impatto
+    n_back = max(1, i["top"] - i["inizio"])
+    if n_disc / fps <= DISCESA_MAX_REALE_S and n_back / fps <= BACKSWING_MAX_REALE_S:
+        return 1
+    n_swing = n_back + n_disc
+    return min(FATTORI_SLOWMO, key=lambda f: abs(np.log(n_swing / (fps * f) / SWING_TIPICO_S)))

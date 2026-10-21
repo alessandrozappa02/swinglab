@@ -216,6 +216,8 @@ def genera(r, titolo="Report SwingLab", dimostrativo=False) -> str:
     banner = ('<div class="banner"><b>Report dimostrativo.</b> Generato con uno swing sintetico '
               '(golfer 3D simulato con difetti tipici di un amatore), non con un video reale.</div>'
               if dimostrativo else "")
+    if r.get("precisione"):
+        banner += f'<div class="banner"><b>Precisione dell\'analisi.</b> {E(r["precisione"])}</div>'
     copertura = pt["copertura"]
     cop_txt = ("" if copertura > 0.95 else
                f'<p class="sub" style="margin-top:8px">Copertura dell\'analisi: {copertura*100:.0f}% delle '
@@ -452,8 +454,8 @@ per ogni metrica.</p>{confronto}
 <h2>Come è stato calcolato il punteggio</h2>{metodo}
 <h2>Qualità dei video e limiti</h2>
 <ul>{qual}{manc}</ul>
-<p class="sub" style="font-size:13px">Analisi eseguita in locale sul tuo computer: i video non sono stati
-inviati a nessun server e i file temporanei sono stati cancellati alla fine dell'analisi. Fonti dei valori di
+<p class="sub" style="font-size:13px">I video sono stati elaborati in una cartella temporanea e cancellati
+alla fine dell'analisi: non vengono conservati. Fonti dei valori di
 riferimento: medie TrackMan PGA/LPGA Tour e TrackMan Combine (velocità, smash, lancio, spin, carry);
 proporzioni antropometriche di Drillis & Contini per la calibrazione con la statura.</p>
 </div></body></html>"""

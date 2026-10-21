@@ -35,9 +35,42 @@ def analisi_mancanti(viste_presenti):
     return out
 
 
-def analizza_tracce(tracce: dict, profilo: Profilo, avvisi_video=None) -> dict:
+AVVISO_PRECISIONE = {
+    1: ("Hai caricato un solo video: l'analisi funziona, ma con meno video è meno precisa e alcune "
+        "metriche non sono disponibili. Per un risultato migliore aggiungi le altre angolazioni "
+        "(ideale: laterale A + da dietro C)."),
+    2: ("Hai caricato due video: l'analisi è buona. Con la terza angolazione alcune misure "
+        "diventano più affidabili."),
+}
+
+
+def correggi_slowmotion(tracce: dict, fps_fissati=(), avvisi=None):
+    """Riconosce i video slow motion esportati a velocità rallentata e
+    corregge il frame rate (a meno che l'utente non l'abbia indicato)."""
+    from .pose import pulisci
+    note = {}
+    for v, tr in tracce.items():
+        if v in fps_fissati:
+            continue
+        f = phases.stima_fattore_slowmo(tr.kp, tr.fps)
+        if f > 1:
+            nuovo = tr.fps * f
+            note[v] = (f"Rilevato uno slow motion rallentato ×{f}: frame rate reale stimato "
+                       f"{nuovo:.0f} fps (il file dichiara {tr.fps:.0f}). Se non è corretto, "
+                       "indica il frame rate reale nel campo sotto il video.")
+            tr.fps = nuovo
+            tr.kp = pulisci(tr.kp, nuovo)
+            if tr.mondo is not None:
+                tr.mondo = pulisci(tr.mondo, nuovo)
+            if avvisi is not None:
+                avvisi.setdefault(v, []).append(note[v])
+    return note
+
+
+def analizza_tracce(tracce: dict, profilo: Profilo, avvisi_video=None, fps_fissati=()) -> dict:
     altezza_m = (profilo.altezza_cm or C.ALTEZZA_DEFAULT_M * 100) / 100
     fasi, per_vista, avvisi = {}, {}, dict(avvisi_video or {})
+    slowmo = correggi_slowmotion(tracce, fps_fissati, avvisi)
     for v, tr in tracce.items():
         F = phases.rileva_fasi(tr.kp, tr.fps)
         fasi[v] = F
@@ -74,15 +107,16 @@ def analizza_tracce(tracce: dict, profilo: Profilo, avvisi_video=None) -> dict:
     return dict(profilo=profilo, tracce=tracce, fasi=fasi, per_vista=per_vista,
                 metriche=finali, punteggi=punti, volo=volo, difetti=difetti,
                 forze=forze, piano=coaching.piano(difetti), sync=sync,
-                avvisi=avvisi, mancanti=analisi_mancanti(tracce.keys()))
+                avvisi=avvisi, mancanti=analisi_mancanti(tracce.keys()), slowmo=slowmo,
+                precisione=AVVISO_PRECISIONE.get(len(tracce)))
 
 
 def analizza_video(video: dict, profilo: Profilo, fps_manuali=None, progress=None) -> dict:
     """video: {"A": percorso, ...} già validati."""
     from .pose import stima_posa
-    fps_manuali = fps_manuali or {}
+    fps_manuali = {k: f for k, f in (fps_manuali or {}).items() if f}
     tracce, avvisi = {}, {}
     for v, path in video.items():
         info = V.info_video(path, fps_manuali.get(v))
         tracce[v] = stima_posa(path, v, C.VISTE[v]["tipo"], info["fps"], progress)
-    return analizza_tracce(tracce, profilo, avvisi)
+    return analizza_tracce(tracce, profilo, avvisi, fps_fissati=set(fps_manuali))

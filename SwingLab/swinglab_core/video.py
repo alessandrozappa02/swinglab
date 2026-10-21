@@ -44,14 +44,18 @@ def valida_file(path, nome_file: str, fps_manuale: float | None = None) -> dict:
                     avvisi=avvisi, info={})
     if info["frames"] < 10:
         errori.append("Il video è troppo corto o danneggiato.")
-    if info["durata"] > C.DURATA_MAX_S:
-        errori.append(f"Il video dura {info['durata']:.1f} s (massimo {C.DURATA_MAX_S:.0f} s). "
-                      "Taglialo intorno allo swing.")
+    if info["durata"] > C.DURATA_MAX_FILE_S or info["frames"] > C.FRAME_MAX:
+        errori.append(f"Il video è troppo lungo ({info['durata']:.0f} s, {info['frames']} fotogrammi). "
+                      "Taglialo intorno allo swing: bastano 1-2 secondi prima e dopo.")
+    elif info["durata"] > C.DURATA_MAX_S:
+        avvisi.append(f"Il video dura {info['durata']:.0f} s. Se è uno slow motion va bene; "
+                      "altrimenti taglialo intorno allo swing per un'analisi più rapida.")
     if info["fps"] < C.FPS_MINIMO:
         errori.append(f"Frame rate troppo basso ({info['fps']:.0f} fps).")
     elif info["fps"] < 100:
-        avvisi.append(f"Video a {info['fps']:.0f} fps: le fasi veloci (impatto, velocità) "
-                      "saranno meno precise. Meglio lo slow motion a 120 o 240 fps.")
+        avvisi.append(f"Il file dichiara {info['fps']:.0f} fps. Se è uno slow motion esportato "
+                      "rallentato, l'app lo riconosce da sola; se è un video normale, le fasi veloci "
+                      "(impatto, velocità) saranno meno precise: meglio lo slow motion a 120 o 240 fps.")
     if min(info["larghezza"], info["altezza"]) < 360:
         avvisi.append("Risoluzione bassa: i punti del corpo saranno meno precisi.")
 
@@ -144,7 +148,7 @@ def leggi_frame(path, indice: int):
     return f if ok else None
 
 
-def itera_frame(path, lato_max: int = 960):
+def itera_frame(path, lato_max: int = 720):
     """Restituisce (indice, frame_rgb_ridimensionato, scala)."""
     cap = apri(path)
     i = 0

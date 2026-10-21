@@ -28,5 +28,5 @@ if not exist ".venv\installato.txt" (
 )
 
 echo Avvio SwingLab: il browser si apre da solo. Per chiudere, chiudi questa finestra.
-".venv\Scripts\python.exe" -m streamlit run app.py
+".venv\Scripts\python.exe" -m streamlit run app.py --server.address localhost
 pause

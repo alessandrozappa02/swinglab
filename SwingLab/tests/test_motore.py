@@ -73,6 +73,39 @@ def test_launch_monitor_sostituisce_la_stima():
     assert r["volo"]["club"]["mph"] == 85.0 and r["volo"]["club"]["conf"] == "alta"
 
 
+def _finto_slowmo(fps_reale, fps_dichiarato, parametri=None):
+    tr = demo.tracce(("A",), parametri, fps=fps_reale)
+    tr["A"].fps = fps_dichiarato          # come un file esportato "rallentato"
+    return tr
+
+
+def test_slowmotion_riconosciuto():
+    for reale in (120, 240):
+        tr = _finto_slowmo(reale, 30)
+        r = pipeline.analizza_tracce(tr, pipeline.Profilo())
+        assert abs(tr["A"].fps - reale) < 1, tr["A"].fps
+        assert 2.0 < r["metriche"]["rapporto_tempo"]["valore"] < 2.6
+        assert r["slowmo"]
+
+
+def test_tempo_reale_non_corretto():
+    for fps in (30, 60, 120, 240):
+        tr = demo.tracce(("A",), fps=fps)
+        r = pipeline.analizza_tracce(tr, pipeline.Profilo())
+        assert tr["A"].fps == fps and not r["slowmo"]
+
+
+def test_fps_indicato_dall_utente_non_cambia():
+    tr = _finto_slowmo(240, 30)
+    pipeline.analizza_tracce(tr, pipeline.Profilo(), fps_fissati={"A"})
+    assert tr["A"].fps == 30
+
+
+def test_avviso_precisione():
+    assert "meno precisa" in _analizza(viste=("C",))["precisione"]
+    assert _analizza(viste=("A", "B", "C"))["precisione"] is None
+
+
 def test_report_html():
     html = report.genera(_analizza(), dimostrativo=True)
     assert html.startswith("<!doctype html>") and "Cosa migliorare" in html

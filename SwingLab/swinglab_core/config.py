@@ -8,7 +8,9 @@ può tararli senza toccare il resto del codice.
 # Vincoli di caricamento
 # ---------------------------------------------------------------------------
 FORMATI_AMMESSI = (".mp4", ".mov")
-DURATA_MAX_S = 15.0
+DURATA_MAX_S = 15.0          # durata reale consigliata dello swing
+DURATA_MAX_FILE_S = 60.0     # un video slow motion esportato a 30 fps dura 4-8 volte di più
+FRAME_MAX = 2400             # limite di fotogrammi per tenere l'analisi veloce
 DIMENSIONE_MAX_MB = 200
 FPS_MINIMO = 25
 FPS_CONSIGLIATO = 120
