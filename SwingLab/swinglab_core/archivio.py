@@ -199,3 +199,24 @@ def carica_swing(motore, utente_id: int, swing_id: int) -> dict | None:
 def elimina_swing(motore, utente_id: int, swing_id: int):
     with motore.begin() as c:
         c.execute(delete(swing).where(swing.c.id == swing_id, swing.c.utente_id == utente_id))
+
+
+def cambia_nome(motore, utente_id: int, nome: str) -> str:
+    nome = (nome or "").strip()[:80]
+    if not nome:
+        raise ErroreAccount("Il nome non può essere vuoto.")
+    with motore.begin() as c:
+        c.execute(update(utenti).where(utenti.c.id == utente_id).values(nome=nome))
+    return nome
+
+
+def cambia_password(motore, utente_id: int, attuale: str, nuova: str):
+    if len(nuova or "") < PASSWORD_MIN:
+        raise ErroreAccount(f"La nuova password deve avere almeno {PASSWORD_MIN} caratteri.")
+    with motore.begin() as c:
+        u = c.execute(select(utenti.c.sale, utenti.c.impronta).where(utenti.c.id == utente_id)).first()
+        if not u or not hmac.compare_digest(_impronta(attuale or "", u.sale), u.impronta):
+            raise ErroreAccount("La password attuale non è corretta.")
+        sale = secrets.token_bytes(16)
+        c.execute(update(utenti).where(utenti.c.id == utente_id)
+                  .values(sale=sale, impronta=_impronta(nuova, sale)))

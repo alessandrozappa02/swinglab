@@ -88,6 +88,13 @@ border:1px solid var(--linea)}
 .sl-voto{font:700 40px/1 var(--display);color:var(--flag)}
 .sl-voto span{font-size:14px;color:var(--crema2);margin-left:2px}
 [data-testid="stForm"]{border:1px solid var(--linea);background:rgba(22,58,41,.75);border-radius:16px;padding:20px 22px}
+.st-key-sl_topbar [data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;align-items:center}
+.st-key-sl_topbar [data-testid="stColumn"]{min-width:0!important;width:auto!important;flex:1 1 0!important}
+.st-key-sl_topbar [data-testid="stColumn"]:last-child{display:flex;justify-content:flex-end}
+.st-key-sl_topbar [data-testid="stColumn"]:last-child>div{width:auto!important;align-items:flex-end}
+.st-key-sl_topbar [data-testid="stPopover"] button{border-radius:999px;font-weight:600;border:1px solid var(--linea)}
+.sl-brand{font:700 22px/1 var(--display);color:var(--crema);padding:6px 0}
+.sl-passo{font:600 13px/1 var(--testo);letter-spacing:.14em;text-transform:uppercase;color:var(--flag);margin:6px 0 2px}
 iframe{border-radius:16px;border:1px solid var(--linea)!important;background:#f3f6ef}
 </style>""", unsafe_allow_html=True)
 
@@ -198,8 +205,9 @@ def mostra_video(video_bytes, chiave):
     if not video_bytes:
         return
     st.subheader("Il tuo swing commentato")
-    st.caption("Rallentatore con gli assi del corpo: le linee bianche segnano dove eri al setup, "
-               "in rosso quello che va corretto.")
+    st.caption("Circa 20 secondi in 4 tappe: Start, Back, Impatto, Finish. Gli assi sono verdi quando "
+               "va bene, gialli per un errore lieve, rossi per un errore marcato; la linea arancione "
+               "tratteggiata è la tua posizione di partenza.")
     sx, _ = st.columns([1, 1])
     with sx:
         st.video(video_bytes, format="video/mp4")
@@ -218,9 +226,45 @@ def salva_nello_storico(ris, html_report, dimostrativo=False, video=None):
         st.warning(f"Analisi completata, ma non sono riuscito a salvarla nello storico: {exc}")
 
 
-def barra_indietro(etichetta="← Menu", dove="menu"):
-    if st.button(etichetta, key=f"indietro_{st.session_state['pagina']}"):
-        vai(dove)
+def barra_superiore():
+    """Riga in alto: a sinistra il ritorno al menu, a destra il menu dell'app (sempre visibile)."""
+    pagina = st.session_state["pagina"]
+    with st.container(key="sl_topbar"):
+        sx, dx = st.columns([3, 2])
+        with sx:
+            if pagina != "menu":
+                if st.button("← Menu", key=f"indietro_{pagina}"):
+                    vai("menu")
+            else:
+                st.markdown("<div class='sl-brand'>SwingLab</div>", unsafe_allow_html=True)
+        with dx:
+            with st.popover("☰ Menu", use_container_width=False):
+                u = utente()
+                st.markdown(f"**{u['nome']}**  \n<span style='opacity:.75'>{u['email']}</span>",
+                            unsafe_allow_html=True)
+                for etichetta, dest in (("Profilo", "profilo"), ("Impostazioni", "impostazioni"),
+                                        ("Storico swing", "storico"), ("Menu principale", "menu")):
+                    if st.button(etichetta, key=f"menu_{dest}_{pagina}", use_container_width=True,
+                                 disabled=pagina == dest):
+                        vai(dest)
+                if st.button("Esci", key=f"menu_esci_{pagina}", use_container_width=True):
+                    esci()
+
+
+def esci():
+    st.session_state.clear()
+    st.session_state["pagina"] = "home"
+    st.rerun()
+
+
+def preferenze():
+    return dict(utente().get("profilo") or {})
+
+
+def salva_preferenze(nuove):
+    u = utente()
+    archivio.salva_profilo(DB, u["id"], nuove)
+    u["profilo"] = nuove
 
 
 def _entra(u):
@@ -289,6 +333,7 @@ def pagina_home():
 
 def pagina_menu():
     u = utente()
+    barra_superiore()
     hero(eyebrow="Club house", titolo=f"Ciao {u['nome']}!", testo="Cosa vuoi fare oggi?", numeri=False)
     n = archivio.conta_swing(DB, u["id"])
     sx, dx = st.columns(2, gap="large")
@@ -308,62 +353,121 @@ def pagina_menu():
                     unsafe_allow_html=True)
         if st.button("Storico dei tuoi swing", use_container_width=True, key="vai_storico"):
             vai("storico")
+
+def pagina_profilo():
+    u = utente()
+    barra_superiore()
+    hero(eyebrow="Account", titolo="Profilo", testo=f"Connesso come {u['email']}", numeri=False)
+    sx, dx = st.columns(2, gap="large")
+    with sx:
+        with st.form("cambia_nome"):
+            st.markdown("<h3 style='margin-top:0'>Nome</h3>", unsafe_allow_html=True)
+            nuovo = st.text_input("Nome", value=u["nome"], key="prof_nome")
+            if st.form_submit_button("Salva il nome", type="primary"):
+                try:
+                    u["nome"] = archivio.cambia_nome(DB, u["id"], nuovo)
+                    st.success("Nome aggiornato.")
+                except archivio.ErroreAccount as e:
+                    st.error(str(e))
+    with dx:
+        with st.form("cambia_password", clear_on_submit=True):
+            st.markdown("<h3 style='margin-top:0'>Password</h3>", unsafe_allow_html=True)
+            att = st.text_input("Password attuale", type="password", key="prof_pw_att")
+            nuova = st.text_input(f"Nuova password (almeno {archivio.PASSWORD_MIN} caratteri)",
+                                  type="password", key="prof_pw_nuova")
+            nuova2 = st.text_input("Ripeti la nuova password", type="password", key="prof_pw_nuova2")
+            if st.form_submit_button("Cambia password", type="primary"):
+                if nuova != nuova2:
+                    st.error("Le due nuove password non coincidono.")
+                else:
+                    try:
+                        archivio.cambia_password(DB, u["id"], att, nuova)
+                        st.success("Password cambiata.")
+                    except archivio.ErroreAccount as e:
+                        st.error(str(e))
     st.write("")
-    c1, c2 = st.columns([1, 3])
-    if c1.button("Esci", key="esci"):
-        st.session_state.clear()
-        st.session_state["pagina"] = "home"
-        st.rerun()
-    with c2.expander("Account"):
-        st.write(f"Connesso come **{u['email']}**")
-        st.caption("Eliminando l'account cancelli definitivamente il profilo e tutti i tuoi swing.")
+    if st.button("Esci dal profilo", key="esci_profilo"):
+        esci()
+    with st.expander("Elimina account"):
+        st.caption("Cancella definitivamente il profilo e tutti i tuoi swing. Non si può annullare.")
         conferma = st.checkbox("Sì, voglio eliminare il mio account e tutti i dati", key="conferma_elimina")
         if st.button("Elimina account", disabled=not conferma, key="elimina_account"):
             archivio.elimina_account(DB, u["id"])
-            st.session_state.clear()
-            st.session_state["pagina"] = "home"
-            st.rerun()
+            esci()
+
+
+def pagina_impostazioni():
+    barra_superiore()
+    hero(eyebrow="Impostazioni", titolo="Il tuo gioco",
+         testo="Servono a calibrare punteggio e stime. Valgono per tutti i prossimi swing.", numeri=False)
+    pref = preferenze()
+    with st.form("impostazioni"):
+        mano = st.radio("Mano", ["Destro", "Mancino"], horizontal=True,
+                        index=1 if pref.get("mancino") else 0, key="imp_mano")
+        livello = st.radio("Livello", ["Ho un handicap", "Principiante (senza handicap)"],
+                           index=1 if pref.get("principiante") else 0, key="imp_livello")
+        hcp = st.number_input("Handicap (se ce l'hai)", min_value=0.0, max_value=54.0,
+                              value=float(pref.get("handicap", 18.0)), step=0.1, key="imp_hcp")
+        nota_alt = st.checkbox("Inserisco la mia statura (stime più precise)",
+                               value=pref.get("altezza_cm", 178) is not None, key="imp_nota_alt")
+        altezza = st.number_input("Statura (cm)", 140, 210, int(pref.get("altezza_cm") or 178), key="imp_alt")
+        if st.form_submit_button("Salva impostazioni", type="primary"):
+            pref.update(mancino=mano == "Mancino", principiante=livello.startswith("Principiante"),
+                        handicap=hcp, altezza_cm=altezza if nota_alt else None)
+            salva_preferenze(pref)
+            st.success("Impostazioni salvate.")
 
 
 def pagina_storico():
     u = utente()
-    barra_indietro()
+    barra_superiore()
     hero(eyebrow="Scorecard", titolo="Storico dei tuoi swing",
-         testo="Tutti gli swing salvati nel tuo account, dal più recente.", numeri=False)
+         testo="Raggruppati per bastone, dal più recente.", numeri=False)
     elenco = archivio.elenco_swing(DB, u["id"])
     if not elenco:
         st.info("Non hai ancora analizzato nessuno swing. Torna al menu e scegli \"Carica nuovo swing\".")
         return
-    if len(elenco) >= 2:
-        punti = [s["punteggio"] for s in reversed(elenco)]
-        st.caption(f"Andamento del punteggio: da {punti[0]} a {punti[-1]} "
-                   f"({punti[-1] - punti[0]:+d}) in {len(punti)} swing.")
-        st.line_chart({"Punteggio": punti}, height=160)
-    for s in elenco:
-        sid = s["id"]
-        with st.container(border=True):
-            c1, c2, c3 = st.columns([1, 3, 1.4])
-            c1.markdown(f"<div class='sl-voto'>{s['punteggio']}<span>/100</span></div>", unsafe_allow_html=True)
-            c2.markdown(f"**{s['quando']:%d/%m/%Y %H:%M}** · {s['bastone']} · viste {s['viste']}"
-                        f"{' · dimostrativo' if s['dimostrativo'] else ''}  \n"
-                        f"Priorità: {s['priorita']} · carry stimato {s['carry']:.0f} m")
-            if c3.button("Apri", key=f"apri_{sid}", use_container_width=True):
-                st.session_state["storico_aperto"] = sid
-            if c3.button("Elimina", key=f"elimina_{sid}", use_container_width=True):
-                archivio.elimina_swing(DB, u["id"], sid)
-                if st.session_state.get("storico_aperto") == sid:
-                    st.session_state.pop("storico_aperto")
-                st.rerun()
+    ordine = list(C.BASTONI.keys())
+    bastoni = sorted({s_["bastone"] for s_ in elenco}, key=lambda b_: ordine.index(b_) if b_ in ordine else 99)
+    gruppi = [("Tutti", elenco)] + [(b_, [s_ for s_ in elenco if s_["bastone"] == b_]) for b_ in bastoni]
+    schede = st.tabs([f"{nome} · {len(lista)}" for nome, lista in gruppi])
+    for (nome, lista), scheda in zip(gruppi, schede):
+        with scheda:
+            if len(lista) >= 2:
+                punti = [s_["punteggio"] for s_ in reversed(lista)]
+                st.caption(f"Andamento del punteggio{'' if nome == 'Tutti' else ' con ' + nome}: "
+                           f"da {punti[0]} a {punti[-1]} ({punti[-1] - punti[0]:+d}) in {len(punti)} swing.")
+                st.line_chart({"Punteggio": punti}, height=150)
+            for s_ in lista:
+                _riga_storico(u, s_, nome)
     sid = st.session_state.get("storico_aperto")
     if sid is not None:
         dati = archivio.carica_swing(DB, u["id"], sid)
         if dati:
-            quando = next((s["quando"] for s in elenco if s["id"] == sid), None)
-            st.subheader(f"Report del {quando:%d/%m/%Y %H:%M}" if quando else "Report")
+            quando = next((s_["quando"] for s_ in elenco if s_["id"] == sid), None)
+            st.subheader(f"Swing del {quando:%d/%m/%Y %H:%M}" if quando else "Swing")
             mostra_video(dati["video"], f"storico_{sid}")
             st.download_button("Scarica il report (HTML)", dati["report"], file_name=f"swinglab_{sid}.html",
                                mime="text/html", key=f"scarica_{sid}")
             mostra_report(dati["report"])
+
+
+def _riga_storico(u, s_, gruppo):
+    sid = s_["id"]
+    k = f"{gruppo}_{sid}"
+    with st.container(border=True):
+        c1, c2, c3 = st.columns([1, 3, 1.4])
+        c1.markdown(f"<div class='sl-voto'>{s_['punteggio']}<span>/100</span></div>", unsafe_allow_html=True)
+        c2.markdown(f"**{s_['bastone']}** · {s_['quando']:%d/%m/%Y %H:%M} · viste {s_['viste']}"
+                    f"{' · dimostrativo' if s_['dimostrativo'] else ''}  \n"
+                    f"Priorità: {s_['priorita']} · carry stimato {s_['carry']:.0f} m")
+        if c3.button("Apri", key=f"apri_{k}", use_container_width=True):
+            st.session_state["storico_aperto"] = sid
+        if c3.button("Elimina", key=f"elimina_{k}", use_container_width=True):
+            archivio.elimina_swing(DB, u["id"], sid)
+            if st.session_state.get("storico_aperto") == sid:
+                st.session_state.pop("storico_aperto")
+            st.rerun()
 
 
 def mostra_report(html):
@@ -374,54 +478,41 @@ def mostra_report(html):
 
 
 def pagina_analisi():
-    # ---------------------------------------------------------------------------
-    # Barra laterale: profilo
-    # ---------------------------------------------------------------------------
-    u = utente()
-    pref = u.get("profilo") or {}
+    pref = preferenze()
     bastoni = list(C.BASTONI.keys())
-    with st.sidebar:
-        st.header("Il tuo profilo")
-        st.caption(f"{u['nome']} · le scelte vengono ricordate per la prossima volta")
-        mano = st.radio("Mano", ["Destro", "Mancino"], horizontal=True,
-                        index=1 if pref.get("mancino") else 0)
-        bastone = st.selectbox("Bastone usato", bastoni,
+    barra_superiore()
+    hero()
+
+    # 1. bastone usato per questo swing (si può cambiare a ogni caricamento)
+    st.markdown("<div class='sl-passo'>Con che bastone hai tirato?</div>", unsafe_allow_html=True)
+    cb, clm = st.columns([1, 1.4])
+    with cb:
+        bastone = st.selectbox("Bastone per questo swing", bastoni, key="bastone_swing",
                                index=bastoni.index(pref.get("bastone")) if pref.get("bastone") in bastoni
                                else bastoni.index("Ferro 7"))
-        livello = st.radio("Livello", ["Ho un handicap", "Principiante (senza handicap)"],
-                           index=1 if pref.get("principiante") else 0)
-        hcp = None
-        if livello == "Ho un handicap":
-            hcp = st.number_input("Handicap", min_value=0.0, max_value=54.0,
-                                  value=float(pref.get("handicap", 18.0)), step=0.1)
-        nota_alt = st.checkbox("Inserisco la mia statura (stime più precise)",
-                               value=pref.get("altezza_cm", 178) is not None)
-        altezza = (st.number_input("Statura (cm)", 140, 210, int(pref.get("altezza_cm") or 178))
-                   if nota_alt else None)
-        with st.expander("Dati di un launch monitor (facoltativo)"):
+    with clm:
+        with st.expander("Dati di un launch monitor per questo colpo (facoltativo)"):
             st.caption("Se li hai, servono a confrontare e correggere le stime.")
-            lm_club = st.number_input("Velocità bastone (km/h)", 0.0, 300.0, 0.0, step=1.0)
-            lm_ball = st.number_input("Velocità palla (km/h)", 0.0, 350.0, 0.0, step=1.0)
-            lm_carry = st.number_input("Carry (m)", 0.0, 350.0, 0.0, step=1.0)
-        st.divider()
-        st.caption("I video originali vengono cancellati subito dopo l'analisi. Nel tuo account restano "
-                   "il report e il video commentato, che puoi eliminare dallo storico.")
-
-    mancino = mano == "Mancino"
+            lm_club = st.number_input("Velocità bastone (km/h)", 0.0, 300.0, 0.0, step=1.0, key="lm_club")
+            lm_ball = st.number_input("Velocità palla (km/h)", 0.0, 350.0, 0.0, step=1.0, key="lm_ball")
+            lm_carry = st.number_input("Carry (m)", 0.0, 350.0, 0.0, step=1.0, key="lm_carry")
+    mancino = bool(pref.get("mancino"))
+    hcp = None if pref.get("principiante") else float(pref.get("handicap", 18.0))
+    altezza = pref.get("altezza_cm", 178)
+    st.caption(f"Impostazioni: {'mancino' if mancino else 'destro'} · "
+               f"{'principiante' if hcp is None else f'handicap {hcp:g}'} · "
+               f"{'statura ' + str(altezza) + ' cm' if altezza else 'statura non indicata'} "
+               "(si cambiano da ☰ Menu › Impostazioni)")
     launch = {k: v for k, v in {
         "club_mph": lm_club / 1.609344 if lm_club else None,
         "ball_mph": lm_ball / 1.609344 if lm_ball else None,
         "carry_m": lm_carry or None}.items() if v}
     profilo = pipeline.Profilo(mancino=mancino, bastone=bastone, altezza_cm=altezza,
                                handicap=hcp, launch_monitor=launch)
-    nuove_pref = dict(mancino=mancino, bastone=bastone, principiante=hcp is None,
-                      handicap=hcp if hcp is not None else pref.get("handicap", 18.0), altezza_cm=altezza)
-    if nuove_pref != pref:
-        archivio.salva_profilo(DB, u["id"], nuove_pref)
-        u["profilo"] = nuove_pref
+    if pref.get("bastone") != bastone:          # ricorda l'ultimo bastone usato
+        pref["bastone"] = bastone
+        salva_preferenze(pref)
 
-    barra_indietro()
-    hero()
     tab_analisi, tab_guida, tab_privacy = st.tabs(["Analizza", "Come riprendere lo swing", "Privacy e limiti"])
 
     # ---------------------------------------------------------------------------
@@ -493,7 +584,8 @@ def pagina_analisi():
                 st.info(f"Senza la vista **{nome}** non posso calcolare: {cosa.lower()}.")
 
         st.caption("Caricando un video confermi di essere la persona ripresa o di avere il suo consenso. "
-                   "Il video viene cancellato a fine analisi.")
+                   "Il video originale viene cancellato a fine analisi; nel tuo account restano il report "
+                   "e il video commentato, che puoi eliminare dallo storico.")
         c1, c2 = st.columns([1, 1])
         vai = c1.button("Analizza lo swing", type="primary", disabled=not caricati)
         prova = c2.button("Prova con uno swing dimostrativo")
@@ -547,14 +639,15 @@ def pagina_analisi():
 
         if "report" in st.session_state:
             mostra_video(st.session_state.get("video"), "analisi")
-            st.subheader("Il report completo")
+            st.subheader("La tua analisi")
             st.download_button("Scarica il report (HTML)", st.session_state["report"],
                                file_name=st.session_state["nome_report"], mime="text/html")
             mostra_report(st.session_state["report"])
 
 
 
-PAGINE = {"home": pagina_home, "menu": pagina_menu, "analisi": pagina_analisi, "storico": pagina_storico}
+PAGINE = {"home": pagina_home, "menu": pagina_menu, "analisi": pagina_analisi, "storico": pagina_storico,
+          "profilo": pagina_profilo, "impostazioni": pagina_impostazioni}
 if not utente():
     st.session_state["pagina"] = "home"
 PAGINE.get(st.session_state["pagina"], pagina_home)()

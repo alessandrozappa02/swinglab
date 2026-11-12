@@ -1,14 +1,13 @@
-"""Video commentato: lo swing a rallentatore con gli assi del corpo e il
-commento delle correzioni, lungo circa 25 secondi.
+"""Video commentato: lo swing al rallentatore con gli assi del corpo,
+diviso in 4 segmenti con fermo immagine (circa 20 secondi).
 
-Struttura del video:
-- breve titolo sul primo fotogramma;
-- riproduzione rallentata dallo setup al finish, con scheletro, assi
-  (colonna, spalle, bacino) e riferimenti della posizione di partenza;
-- avvisi "live" quando testa o bacino escono dai riferimenti;
-- pause sulle fasi dove c'è una correzione (o un punto di forza), con il
-  commento del maestro;
-- riepilogo finale.
+    Start → Stop/Start · Back → Stop/Back · Impatto → Stop/Impatto · Finish → Stop/Finish
+
+- Gli assi (colonna, spalle, bacino) e il cerchio della testa cambiano
+  colore in base a quanto è marcato l'errore in quell'istante:
+  verde = va bene, giallo = errore lieve, rosso = errore marcato.
+- La linea arancione tratteggiata è la posizione di partenza (setup).
+- A ogni fermo immagine: punteggio della fase e una breve correzione.
 Il file è un mp4 H.264 (si apre in qualsiasi browser e telefono).
 """
 from __future__ import annotations
@@ -25,7 +24,7 @@ from .metrics import lati, medio
 from .phases import NOMI_FASI
 
 FPS_OUT = 30
-DURATA_TARGET_S = 25.0
+DURATA_TARGET_S = 20.0
 LARGHEZZA_OUT = 720
 
 # colori RGB (il disegno avviene in RGB con Pillow)
@@ -33,6 +32,7 @@ GIALLO = (242, 201, 76)
 ARANCIO = (240, 140, 60)
 AZZURRO = (90, 190, 230)
 VERDE = (110, 210, 140)
+GRIGIO = (215, 222, 214)
 BIANCO = (245, 245, 240)
 ROSSO = (235, 80, 70)
 FONDO = (15, 43, 30)
@@ -113,9 +113,32 @@ def _estendi(a, b, f):
     return m - d * f, m + d * f
 
 
+
+# ---------------------------------------------------------------------------
+# Gravità degli errori → colore
+# ---------------------------------------------------------------------------
+FASI_VIDEO = (("Start", "P1"), ("Back", "P4"), ("Impatto", "P7"), ("Finish", "P10"))
+
+
+def colore_gravita(g):
+    """0 = verde (va bene), 0,5 = giallo (lieve), 1 = rosso (marcato)."""
+    g = float(np.clip(g, 0, 1))
+    if g <= 0.5:
+        a, b, t = VERDE, GIALLO, g / 0.5
+    else:
+        a, b, t = GIALLO, ROSSO, (g - 0.5) / 0.5
+    return tuple(int(round(x + (y - x) * t)) for x, y in zip(a, b))
+
+
+def _rampa(x, ok, marcato):
+    """0 fino a 'ok', 1 da 'marcato' in su, lineare in mezzo."""
+    return float(np.clip((x - ok) / max(marcato - ok, 1e-6), 0, 1))
+
+
 class _Disegno:
-    def __init__(self, tr, F, mancino, ppm, scala):
-        self.tr, self.F, self.mancino, self.ppm, self.s = tr, F, mancino, ppm, scala
+    def __init__(self, tr, F, mancino, ppm, scala, dettaglio):
+        self.tr, self.F, self.s = tr, F, scala
+        self.det = dettaglio
         self.g, self.d = lati(mancino)
         p1 = F["fasi"]["P1"]
         k0 = tr.kp[p1] * scala
@@ -123,74 +146,139 @@ class _Disegno:
         self.bacino0 = medio(k0, C.ANCA_SX, C.ANCA_DX)
         self.spalle0 = medio(k0, C.SPALLA_SX, C.SPALLA_DX)
         self.raggio_testa = max(18.0, 0.55 * np.linalg.norm(k0[C.SPALLA_SX] - k0[C.SPALLA_DX]) / 2)
-        self.cm_px = 100.0 / (ppm * scala)          # cm per pixel nell'immagine di uscita
+        self.cm_px = 100.0 / (ppm * scala)
         mani = (tr.kp[:, C.POLSO_SX] + tr.kp[:, C.POLSO_DX]) / 2 * scala
         self.verso_palla = np.sign(mani[p1, 0] - self.bacino0[0]) or 1.0
         self.verso_bersaglio = np.sign(k0[self.g["spalla"], 0] - k0[self.d["spalla"], 0]) or 1.0
+        self.busto0 = self._busto(k0)
 
-    def avvisi_live(self, i):
-        """Controlli fotogramma per fotogramma: restituisce le parti da evidenziare."""
+    @staticmethod
+    def _busto(k):
+        s = medio(k, C.SPALLA_SX, C.SPALLA_DX) - medio(k, C.ANCA_SX, C.ANCA_DX)
+        return float(np.degrees(np.arctan2(abs(s[0]), -s[1])))
+
+    def _metrica(self, nome):
+        """Gravità di una metrica dell'analisi (0 = nella fascia ideale)."""
+        d = self.det.get(nome)
+        return 0.0 if d is None else float(np.clip((100 - d["punteggio"]) / 60, 0, 1))
+
+    def gravita(self, i):
+        """Gravità di ogni parte del corpo nel fotogramma i, più gli avvisi da scrivere."""
         k = self.tr.kp[i] * self.s
         f = self.F["fasi"]
-        out = {}
-        dt = k[C.NASO] - self.testa0
-        soglia_testa = 6.0
-        if self.tr.tipo == "DTL":
-            if dt[1] * self.cm_px > soglia_testa and f["P4"] <= i <= f["P7"] + 2:
-                out["testa"] = "La testa scende"
-            elif abs(dt[0]) * self.cm_px > 8:
-                out["testa"] = "La testa si muove"
-            bac = medio(k, C.ANCA_SX, C.ANCA_DX)
-            if f["P5"] <= i <= f["P8"] and (bac[0] - self.bacino0[0]) * self.verso_palla * self.cm_px > 5:
-                out["bacino"] = "Il bacino va verso la palla"
-        else:
-            if abs(dt[0]) * self.cm_px > 7 and i <= f["P7"]:
-                out["testa"] = "La testa si sposta"
-            bac = medio(k, C.ANCA_SX, C.ANCA_DX)
-            spost = (bac[0] - self.bacino0[0]) * self.verso_bersaglio * self.cm_px
-            if f["P2"] <= i <= f["P4"] and spost < -6:
-                out["bacino"] = "Il bacino scivola indietro"
-        return out
+        dtl = self.tr.tipo == "DTL"
+        g = dict(colonna=0.0, spalle=0.0, bacino=0.0, testa=0.0)
+        avvisi = {}
+        bac = medio(k, C.ANCA_SX, C.ANCA_DX)
+        dt = (k[C.NASO] - self.testa0) * self.cm_px
 
-    def disegna(self, img, i, live):
+        # testa
+        if dtl:
+            scende = dt[1] if f["P4"] <= i <= f["P7"] + 2 else 0.0
+            g["testa"] = max(_rampa(scende, 3, 9), _rampa(abs(dt[0]), 5, 12) if i <= f["P7"] else 0)
+            if g["testa"] >= 0.5:
+                avvisi["testa"] = "La testa scende" if scende > abs(dt[0]) else "La testa si muove"
+        elif i <= f["P7"]:
+            g["testa"] = _rampa(abs(dt[0]), 4, 10)
+            if g["testa"] >= 0.5:
+                avvisi["testa"] = "La testa si sposta"
+
+        # bacino
+        if dtl:
+            if f["P5"] <= i <= f["P8"]:
+                verso = (bac[0] - self.bacino0[0]) * self.verso_palla * self.cm_px
+                g["bacino"] = _rampa(verso, 2, 7)
+                if g["bacino"] >= 0.5:
+                    avvisi["bacino"] = "Il bacino va verso la palla"
+        else:
+            spost = (bac[0] - self.bacino0[0]) * self.verso_bersaglio * self.cm_px
+            if f["P2"] <= i <= f["P4"]:
+                g["bacino"] = _rampa(-spost, 2, 7)
+                if g["bacino"] >= 0.5:
+                    avvisi["bacino"] = "Il bacino scivola indietro"
+            elif f["P5"] <= i <= f["P7"]:
+                g["bacino"] = max(self._metrica("peso_impatto"), _rampa(spost, 14, 22))
+        if f["P3"] <= i <= f["P5"]:
+            g["bacino"] = max(g["bacino"], 0.7 * self._metrica("rotazione_bacino"))
+
+        # colonna
+        if dtl and f["P2"] <= i <= f["P8"]:
+            g["colonna"] = _rampa(abs(self._busto(k) - self.busto0), 4, 11)
+            if g["colonna"] >= 0.5:
+                avvisi["colonna"] = "Perdi l'inclinazione del busto"
+        elif not dtl:
+            if i <= f["P2"]:
+                g["colonna"] = self._metrica("tilt_setup")
+            elif f["P6"] <= i <= f["P8"]:
+                g["colonna"] = self._metrica("tilt_impatto")
+        if i <= f["P2"]:
+            g["colonna"] = max(g["colonna"], self._metrica("inclinazione_busto"))
+
+        # spalle
+        if f["P3"] <= i <= f["P5"]:
+            g["spalle"] = max(self._metrica("rotazione_spalle"), 0.6 * self._metrica("x_factor"))
+            if g["spalle"] >= 0.5 and f["P4"] - 3 <= i <= f["P4"] + 3:
+                avvisi["spalle"] = "Rotazione delle spalle corta"
+        elif f["P5"] < i <= f["P7"]:
+            g["spalle"] = max(self._metrica("over_the_top"), self._metrica("tilt_impatto"))
+        return g, avvisi
+
+    def disegna(self, img, i, g):
         k = self.tr.kp[i] * self.s
         d = ImageDraw.Draw(img)
         h = img.height
         w_l = max(2, int(h / 380))
-        # riferimenti della posizione di partenza
+        fl = _font(max(13, h // 78), grassetto=True)
+        # posizione di partenza (arancione tratteggiato): verticale del bacino e linea della testa
         _linea_tratteggiata(d, (self.bacino0[0], self.spalle0[1] - 0.15 * h),
-                            (self.bacino0[0], self.bacino0[1] + 0.32 * h), BIANCO, w_l)
-        col_testa = ROSSO if "testa" in live else BIANCO
+                            (self.bacino0[0], self.bacino0[1] + 0.32 * h), ARANCIO, w_l + 1)
+        _linea_tratteggiata(d, (self.testa0[0] - 2.2 * self.raggio_testa, self.testa0[1]),
+                            (self.testa0[0] + 2.2 * self.raggio_testa, self.testa0[1]), ARANCIO, w_l)
+        # cerchio della testa al setup, colorato per gravità
         r = self.raggio_testa
         d.ellipse([self.testa0[0] - r, self.testa0[1] - r, self.testa0[0] + r, self.testa0[1] + r],
-                  outline=col_testa, width=w_l + (1 if "testa" in live else 0))
-        # scheletro
+                  outline=colore_gravita(g["testa"]), width=w_l + 1)
+        # scheletro discreto
         for a, b in C.SCHELETRO:
-            d.line([tuple(k[a]), tuple(k[b])], fill=VERDE, width=w_l + 1)
+            d.line([tuple(k[a]), tuple(k[b])], fill=GRIGIO, width=max(1, w_l - 1))
         for j in (0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28):
             x, y = k[j]
-            d.ellipse([x - w_l - 1, y - w_l - 1, x + w_l + 1, y + w_l + 1], fill=BIANCO)
-        # assi del corpo
+            d.ellipse([x - w_l, y - w_l, x + w_l, y + w_l], fill=BIANCO)
+        # assi colorati per gravità, con il loro nome
         sp, bc = medio(k, C.SPALLA_SX, C.SPALLA_DX), medio(k, C.ANCA_SX, C.ANCA_DX)
+
+        def asse(p, q, nome, gr):
+            col = colore_gravita(gr)
+            d.line([tuple(p), tuple(q)], fill=FONDO, width=w_l + 6)
+            d.line([tuple(p), tuple(q)], fill=col, width=w_l + 3)
+            fine = q if q[0] >= p[0] else p
+            d.text((fine[0] + 6, fine[1] - fl.size / 2), nome, fill=col, font=fl,
+                   stroke_width=2, stroke_fill=FONDO)
+
         a, b = _estendi(k[C.SPALLA_SX], k[C.SPALLA_DX], 1.45)
-        d.line([tuple(a), tuple(b)], fill=ARANCIO, width=w_l + 2)
-        col_bac = ROSSO if "bacino" in live else AZZURRO
+        asse(a, b, "spalle", g["spalle"])
         a, b = _estendi(k[C.ANCA_SX], k[C.ANCA_DX], 1.6)
-        d.line([tuple(a), tuple(b)], fill=col_bac, width=w_l + 2)
-        asse = sp - bc
-        d.line([tuple(bc - 0.25 * asse), tuple(sp + 0.55 * asse)], fill=GIALLO, width=w_l + 2)
+        asse(a, b, "bacino", g["bacino"])
+        v = sp - bc
+        asse(bc - 0.25 * v, sp + 0.55 * v, "colonna", g["colonna"])
 
     def legenda(self, img):
         d = ImageDraw.Draw(img, "RGBA")
-        f = _font(max(13, img.height // 72))
-        voci = ((GIALLO, "colonna"), (ARANCIO, "spalle"), (AZZURRO, "bacino"), (BIANCO, "partenza"))
-        larg = max(d.textlength(t, font=f) for _, t in voci) + 46
+        f = _font(max(13, img.height // 74))
+        voci = ((VERDE, "va bene", False), (GIALLO, "errore lieve", False),
+                (ROSSO, "errore marcato", False), (ARANCIO, "partenza", True))
+        larg = max(d.textlength(t, font=f) for _, t, _ in voci) + 46
         x, y = img.width - 14 - larg, 80
         d.rounded_rectangle([x, y, img.width - 14, y + len(voci) * (f.size + 8) + 12], radius=10,
-                            fill=FONDO + (190,))
+                            fill=FONDO + (195,))
         y += 8
-        for col, testo in voci:
-            d.line([(x + 10, y + f.size // 2 + 1), (x + 30, y + f.size // 2 + 1)], fill=col, width=4)
+        for col, testo, tratt in voci:
+            ym = y + f.size // 2 + 1
+            if tratt:
+                for xx in range(int(x + 10), int(x + 30), 8):
+                    d.line([(xx, ym), (min(xx + 4, x + 30), ym)], fill=col, width=4)
+            else:
+                d.line([(x + 10, ym), (x + 30, ym)], fill=col, width=4)
             d.text((x + 38, y), testo, fill=BIANCO, font=f)
             y += f.size + 8
 
@@ -227,25 +315,25 @@ def _testata(img, fase, rallentamento, avanzamento, tacche):
     d.text((28, 24), f"SwingLab · {fase}", fill=BIANCO, font=f)
     t = f"rallentato ×{rallentamento:.0f}" if rallentamento >= 1.5 else "velocità reale"
     d.text((W - 28 - d.textlength(t, font=fs), 27), t, fill=GIALLO, font=fs)
-    # barra di avanzamento con le tacche delle fasi
     y = 62
     d.rectangle([14, y, W - 14, y + 4], fill=(255, 255, 255, 60))
-    d.rectangle([14, y, 14 + (W - 28) * avanzamento, y + 4], fill=GIALLO + (255,))
+    d.rectangle([14, y, 14 + (W - 28) * float(np.clip(avanzamento, 0, 1)), y + 4], fill=GIALLO + (255,))
     for pos in tacche:
         x = 14 + (W - 28) * pos
         d.rectangle([x - 1, y - 3, x + 1, y + 7], fill=BIANCO + (220,))
 
 
-def _etichetta_live(img, avvisi):
+def _etichetta_live(img, avvisi, gravita):
     if not avvisi:
         return
     d = ImageDraw.Draw(img, "RGBA")
     f = _font(max(17, img.height // 52), grassetto=True)
     y = 84
-    for testo in avvisi.values():
+    for parte, testo in avvisi.items():
+        col = colore_gravita(gravita.get(parte, 1.0))
         w = d.textlength(testo, font=f)
-        d.rounded_rectangle([14, y, 14 + w + 28, y + f.size + 16], radius=12, fill=ROSSO + (230,))
-        d.text((28, y + 7), testo, fill=BIANCO, font=f)
+        d.rounded_rectangle([14, y, 14 + w + 28, y + f.size + 16], radius=12, fill=col + (235,))
+        d.text((28, y + 7), testo, fill=FONDO, font=f)
         y += f.size + 24
 
 
@@ -291,45 +379,50 @@ def scegli_vista(ris):
     return next(iter(ris["tracce"]))
 
 
+def _correzione_fase(ris, fase):
+    """La correzione più importante della fase (o un punto di forza)."""
+    det = ris["punteggi"]["dettaglio"]
+    for dif in ris["difetti"]:
+        if det.get(dif["metrica"], {}).get("cat") == fase:
+            return FRASI.get(dif["id"], dif["titolo"]), True
+    for forza in ris["forze"]:
+        if det.get(forza["metrica"], {}).get("cat") == fase:
+            return "Bene: " + forza["testo"], False
+    return "Nessuna correzione importante in questa fase.", False
+
+
+def _colore_punteggio(p):
+    if p is None:
+        return BIANCO
+    return VERDE if p >= 85 else (GIALLO if p >= 65 else ROSSO)
+
+
 def genera(ris, vista=None, durata=DURATA_TARGET_S, progress=None) -> bytes:
     """Restituisce i byte del video mp4 commentato."""
     vista = vista or scegli_vista(ris)
     tr, F = ris["tracce"][vista], ris["fasi"][vista]
-    mancino = ris["profilo"].mancino
     ppm = ris["per_vista"][vista]["ppm"]
     f = F["fasi"]
     fps = tr.fps
-    s0 = max(0, f["P1"] - int(0.25 * fps))
-    s1 = min(tr.T - 1, f["P10"] + int(0.25 * fps))
+    s0 = max(0, f["P1"] - int(0.3 * fps))
+    s1 = min(tr.T - 1, f["P10"] + int(0.2 * fps))
 
-    # dimensioni di uscita (lati pari per H.264)
     scala = LARGHEZZA_OUT / tr.larghezza
     W = LARGHEZZA_OUT // 2 * 2
     H = int(round(tr.altezza * scala)) // 2 * 2
-    dis = _Disegno(tr, F, mancino, ppm, scala)
+    dis = _Disegno(tr, F, ris["profilo"].mancino, ppm, scala, ris["punteggi"]["dettaglio"])
+    cat = ris["punteggi"]["categorie"]
 
-    # eventi: correzioni e punti di forza visibili in questa vista
-    eventi = []
-    for n, dif in enumerate(ris["difetti"], 1):
-        if dif["vista"] != vista and dif["id"] not in ("tempo_veloce", "tempo_lento", "sequenza"):
-            continue
-        frase = FRASI.get(dif["id"], dif["titolo"])
-        eventi.append(dict(i=f.get(dif["fase"], f["P4"]), titolo=f"Correzione {n}", testo=frase,
-                           colore=ROSSO, pausa=2.6))
-    for forza in ris["forze"][:2]:
-        if forza["vista"] == vista:
-            eventi.append(dict(i=f.get(forza["fase"], f["P1"]), titolo="Bene", testo=forza["testo"],
-                               colore=VERDE, pausa=1.6))
-    eventi.sort(key=lambda e: e["i"])
-    # se due eventi cadono sullo stesso fotogramma, si mostrano uno dopo l'altro
-
-    intro_s, outro_s = 2.0, 3.0
-    pause_s = sum(e["pausa"] for e in eventi)
-    play_s = max(7.0, durata - intro_s - outro_s - pause_s)
-    n_play = int(play_s * FPS_OUT)
-    reale_s = (s1 - s0) / fps
-    rallentamento = play_s / max(reale_s, 1e-3)
-    tacche = [(f[p] - s0) / max(1, s1 - s0) for p in ("P1", "P4", "P7", "P10")]
+    # segmenti: [inizio → Start], [Start → Back], [Back → Impatto], [Impatto → Finish]
+    fermi = [f[p] for _, p in FASI_VIDEO]
+    inizi = [s0] + fermi[:3]
+    intro_s, pausa_s = 1.0, 2.2
+    play_s = max(6.0, durata - intro_s - 4 * pausa_s)
+    reali = [max(1, b - a) / fps for a, b in zip(inizi, fermi)]
+    minimi = [0.6, 1.2, 1.2, 1.2]
+    pesi = np.maximum(np.array(reali) / sum(reali) * play_s, minimi)
+    pesi = pesi * play_s / pesi.sum()
+    tacche = [(x - s0) / max(1, s1 - s0) for x in fermi]
 
     cache = {}
 
@@ -344,58 +437,42 @@ def genera(ris, vista=None, durata=DURATA_TARGET_S, progress=None) -> bytes:
                 cache.pop(next(iter(cache)))
         return cache[i]
 
-    def fase_di(i):
-        nome = "Setup"
-        for p in ("P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"):
-            if i >= f[p]:
-                nome = f"{p} {NOMI_FASI[p]}"
-        return nome
-
-    def fotogramma(i, live=True, riquadro=None, avanz=None, titolo_rallent=None):
+    def fotogramma(i, etichetta, rallent, riquadro=None):
         img = Image.fromarray(base(i))
-        av = dis.avvisi_live(i) if live else {}
-        dis.disegna(img, i, av)
+        gr, avvisi = dis.gravita(i)
+        dis.disegna(img, i, gr)
         dis.legenda(img)
-        _testata(img, fase_di(i), titolo_rallent if titolo_rallent is not None else rallentamento,
-                 avanz if avanz is not None else (i - s0) / max(1, s1 - s0), tacche)
+        _testata(img, etichetta, rallent, (i - s0) / max(1, s1 - s0), tacche)
         if riquadro:
             _riquadro(img, **riquadro)
         else:
-            _etichetta_live(img, av)
+            _etichetta_live(img, avvisi, gr)
         return np.asarray(img)
 
     fd, percorso = tempfile.mkstemp(suffix=".mp4", prefix="swinglab_")
     os.close(fd)
     out = _Scrittore(percorso, W, H)
     try:
-        # intro
-        out.scrivi(fotogramma(s0, live=False, riquadro=dict(
+        out.scrivi(fotogramma(s0, "Il tuo swing", 1, riquadro=dict(
             titolo="Il tuo swing al rallentatore",
-            testo=f"Vista {vista} · {C.VISTE[vista]['breve']}. Linee bianche: dove eri al setup. "
-                  f"Rosso: dove va corretto.", colore=GIALLO)), int(intro_s * FPS_OUT))
-
-        # riproduzione con pause
-        prossimo = 0
-        for k in range(n_play):
-            i = int(round(s0 + k * (s1 - s0) / max(1, n_play - 1)))
-            while prossimo < len(eventi) and i >= eventi[prossimo]["i"]:
-                e = eventi[prossimo]
-                out.scrivi(fotogramma(e["i"], riquadro=dict(titolo=e["titolo"], testo=e["testo"],
-                                                            colore=e["colore"])), int(e["pausa"] * FPS_OUT))
-                prossimo += 1
-            out.scrivi(fotogramma(i))
-            if progress and k % 30 == 0:
-                progress(f"Preparo il video commentato… {int(100 * k / n_play)}%", k / n_play)
-
-        # riepilogo finale sul finish
-        if ris["difetti"]:
-            testo = "Da allenare: " + "; ".join(d["titolo"].split(":")[0].lower()
-                                                for d in ris["difetti"][:3]) + "."
-        else:
-            testo = "Nessuna correzione importante: lavora su costanza e ritmo."
-        out.scrivi(fotogramma(s1, live=False, riquadro=dict(
-            titolo=f"Punteggio {ris['punteggi']['totale']}/100", testo=testo, colore=GIALLO)),
-            int(outro_s * FPS_OUT))
+            testo=f"Vista {vista} · {C.VISTE[vista]['breve']}. Gli assi diventano gialli o rossi "
+                  "quando l'errore è lieve o marcato.", colore=GIALLO)), int(intro_s * FPS_OUT))
+        totale = sum(int(p * FPS_OUT) for p in pesi)
+        fatti = 0
+        for n, ((nome, _), a, b, sec) in enumerate(zip(FASI_VIDEO, inizi, fermi, pesi)):
+            n_out = max(2, int(sec * FPS_OUT))
+            rallent = sec / max((b - a) / fps, 1e-3)
+            for k in range(n_out):
+                i = int(round(a + k * (b - a) / max(1, n_out - 1)))
+                out.scrivi(fotogramma(i, nome, rallent))
+                fatti += 1
+                if progress and fatti % 30 == 0:
+                    progress(f"Preparo il video commentato… {int(100 * fatti / totale)}%", fatti / totale)
+            p = cat.get(nome, {}).get("punteggio")
+            testo, _ = _correzione_fase(ris, nome)
+            titolo = f"Stop · {nome}" + (f" · {p:.0f}/100" if p is not None else "")
+            out.scrivi(fotogramma(b, nome, rallent, riquadro=dict(
+                titolo=titolo, testo=testo, colore=_colore_punteggio(p))), int(pausa_s * FPS_OUT))
         out.chiudi()
         with open(percorso, "rb") as fh:
             return fh.read()

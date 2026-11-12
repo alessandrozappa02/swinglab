@@ -136,7 +136,7 @@ def stima(v_mani_ms, bastone, handicap, fps, altezza_nota, percorso_deg=None,
     # --- direzione e curva -------------------------------------------
     if percorso_deg is None:
         direzione = dict(testo="Non stimabile: serve il video da dietro (C).", conf=None,
-                         percorso=None)
+                         percorso=None, etichetta=None)
     else:
         if percorso_deg < -3:
             t = ("Percorso dall'esterno all'interno: palla che parte a sinistra (pull) "
@@ -148,7 +148,17 @@ def stima(v_mani_ms, bastone, handicap, fps, altezza_nota, percorso_deg=None,
         else:
             t = ("Percorso quasi neutro: volo tendenzialmente dritto; la curva dipende "
                  "dalla faccia, che il video non misura.")
-        direzione = dict(testo=t, conf="bassa", percorso=percorso_deg)
+        if percorso_deg < -8:
+            etich = "Slice"
+        elif percorso_deg < -3:
+            etich = "Fade"
+        elif percorso_deg <= 4:
+            etich = "Dritta"
+        elif percorso_deg <= 9:
+            etich = "Draw"
+        else:
+            etich = "Hook"
+        direzione = dict(testo=t, conf="bassa", percorso=percorso_deg, etichetta=etich)
 
     return dict(
         bastone=bastone, fonte=fonte, note=note,

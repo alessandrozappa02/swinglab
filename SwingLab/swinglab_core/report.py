@@ -178,6 +178,20 @@ th{color:var(--ink2);font-weight:600}td.n{text-align:right;font-variant-numeric:
 .week{margin-bottom:12px}.sess{border-top:1px solid var(--line);padding:8px 0}.sess:first-of-type{border-top:0}
 .sess ul{margin:4px 0;padding-left:18px}
 .warn{color:var(--bad)}
+.fasi{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:12px;margin-top:12px}
+.fase{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:start}
+.fase-img img{width:100%;border-radius:10px;display:block}
+.fase-top{display:flex;justify-content:space-between;align-items:baseline}
+.fase-top b{font:700 30px/1 Georgia,serif}.fase-top small{font-size:13px;color:var(--ink2);margin-left:2px}
+.fase-metriche{list-style:none;margin:6px 0 0;padding:0;font-size:13.5px}
+.fase-metriche li{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px solid var(--line)}
+.fase-metriche li i{width:9px;height:9px;border-radius:50%}
+.fase-metriche li span{color:var(--ink2);font-variant-numeric:tabular-nums}
+.fase-nota{font-size:14px;margin:8px 0 0}.fase-nota.ok b{color:var(--ok)}
+details.appro{margin-top:42px;border-top:1px solid var(--line);padding-top:10px}
+details.appro>summary{cursor:pointer;font:700 21px/1.2 Georgia,serif;padding:8px 0;list-style:none}
+details.appro>summary::before{content:"+ ";color:var(--brand)}details.appro[open]>summary::before{content:"– "}
+details.appro h2{font-size:18px}
 .banner{background:#fff3d6;color:#5a4300;border:1px solid #f0d58a;border-radius:10px;padding:10px 14px;font-size:14px;margin-top:14px}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .banner{background:#3a3014;color:#f2dfa5;border-color:#6b5a22}}
 @media (max-width:700px){.hero{grid-template-columns:1fr}.fault{grid-template-columns:1fr}.vs{grid-template-columns:repeat(4,1fr)}
@@ -237,6 +251,38 @@ def genera(r, titolo="Report SwingLab", dimostrativo=False) -> str:
   </div>
 </div>"""
 
+    # ---- le 4 fasi -------------------------------------------------------
+    chiavi_fase = {"Start": "P1", "Back": "P4", "Impatto": "P7", "Finish": "P10"}
+    v_fasi = r["difetti"][0]["vista"] if r["difetti"] and r["difetti"][0]["vista"] in tracce else viste[0]
+    fasi_html = ""
+    for cat, c_ in pt["categorie"].items():
+        ph = chiavi_fase.get(cat, "P1")
+        im = tracce[v_fasi].frame(fasi[v_fasi]["fasi"][ph])
+        thumb = ""
+        if im is not None:
+            from .annotate import scheletro as _sk0
+            _sk0(im, tracce[v_fasi].kp[fasi[v_fasi]["fasi"][ph]])
+            thumb = f'<img src="{a_base64(im, 220, 78)}" alt="">'
+        voci = sorted([(n_, d) for n_, d in pt["dettaglio"].items() if d["cat"] == cat],
+                      key=lambda nd: nd[1]["punteggio"])
+        righe_m = "".join(
+            f'<li><i style="background:{_colore_punteggio(d["punteggio"])}"></i>{E(d["nome"])}'
+            f'<span>{_fmt_val(d["valore"], d["unita"])}</span></li>' for _, d in voci)
+        corr = next((f_ for f_ in r["difetti"] if pt["dettaglio"][f_["metrica"]]["cat"] == cat), None)
+        nota = (f'<p class="fase-nota"><b>Da correggere:</b> {E(corr["titolo"])}</p>' if corr else
+                '<p class="fase-nota ok"><b>Bene:</b> nessuna correzione importante.</p>')
+        sc = c_["punteggio"]
+        punteggio_txt = "n.d." if sc is None else f"{sc:.0f}"
+        fasi_html += f"""
+<div class="card fase">
+  <div class="fase-img">{thumb}</div>
+  <div class="fase-txt">
+    <div class="fase-top"><h3>{cat}</h3><b style="color:{_colore_punteggio(sc)}">{punteggio_txt}<small>/100</small></b></div>
+    <ul class="fase-metriche">{righe_m or '<li>Non misurabile con le viste caricate</li>'}</ul>
+    {nota}
+  </div>
+</div>"""
+
     # ---- volo della palla ------------------------------------------------
     c, b = volo["club"], volo["palla"]
     kmh = 1.609344
@@ -257,6 +303,11 @@ def genera(r, titolo="Report SwingLab", dimostrativo=False) -> str:
              volo["carry"]["conf"]),
         stat("Distanza totale", f"{volo['totale']['m']:.0f} m",
              f"{volo['totale']['lo']:.0f}–{volo['totale']['hi']:.0f} m · {volo['totale']['m']/0.9144:.0f} yd", "bassa"),
+        stat("Slice / fade", E(volo["direzione"].get("etichetta") or "n.d."),
+             (f"percorso del bastone {volo['direzione']['percorso']:+.0f}° "
+              f"({'dall’interno' if volo['direzione']['percorso'] > 0 else 'dall’esterno'})"
+              if volo["direzione"]["percorso"] is not None else "serve il video da dietro (C)"),
+             volo["direzione"]["conf"]),
     ])
     dirz = volo["direzione"]
     perc = (f" Percorso stimato del bastone: {dirz['percorso']:+.0f}° "
@@ -415,7 +466,8 @@ arrivano da sinistra a destra: bacino, poi busto, poi braccia. Il punto segna il
 <p>Ogni metrica riceve 100 punti se cade nella fascia ideale; fuori dalla fascia il punteggio scende in base
 alla distanza, con una tolleranza che si allarga per il tuo livello ({E(pt['livello'])}: tolleranza ×{pt['fattore']:.1f}).
 Il punteggio di categoria è la media pesata delle sue metriche; il totale è la media pesata delle categorie
-(Setup 15, Backswing 20, Transizione 15, Impatto 25, Finish 10, Tempo 15). Le categorie che non si possono
+(Start 15, Back 35, Impatto 25, Finish 25: Back comprende backswing e transizione, Finish comprende
+equilibrio e ritmo). Le fasi che non si possono
 misurare con i video caricati non contano e il loro peso viene ridistribuito. Il <b>punteggio assoluto</b>
 usa le tolleranze di un giocatore avanzato: è il numero da confrontare tra giocatori diversi.</p>
 <div class="card" style="overflow-x:auto"><table><tr><th>Metrica</th><th class="n">Valore</th><th class="n">Ideale</th>
@@ -441,20 +493,25 @@ usa le tolleranze di un giocatore avanzato: è il numero da confrontare tra gioc
 <h1>Analisi del tuo swing</h1>
 <p class="sub">{oggi} · golfer {lato}, {E(hcp)} · statura {E(alt)} · bastone {E(p.bastone)} · viste {", ".join(viste)}</p>
 {banner}
+<h2>Analisi delle 4 fasi</h2>
 {riepilogo}
+<div class="fasi">{fasi_html}</div>
 <h2>Dati di volo stimati</h2>{volo_html}
+<h2>Esercizi di correzione</h2>
+<p class="sub">Scelti in base agli errori principali, dal più importante.</p>{migl}
+<details class="appro"><summary>Approfondimenti</summary>
 <h2>Cosa va bene</h2>{bene}
-<h2>Cosa migliorare, in ordine di priorità</h2>{migl}
 <h2>Piano di allenamento: 2 settimane, 3 sessioni a settimana</h2>{piano_html}
 <h2>Fasi dello swing (P1–P10)</h2>{strip}
 <h2>Il tuo swing e il modello di riferimento</h2>
 <p class="sub">Fotogrammi allineati sulle stesse fasi. Il modello è un golfer sintetico con valori ideali
 per ogni metrica.</p>{confronto}
-<h2>Transizione</h2>{seq_html}
+<h2>Sequenza cinematica</h2>{seq_html}
 <h2>Come è stato calcolato il punteggio</h2>{metodo}
 <h2>Qualità dei video e limiti</h2>
 <ul>{qual}{manc}</ul>
-<p class="sub" style="font-size:13px">I video sono stati elaborati in una cartella temporanea e cancellati
+</details>
+<p class="sub" style="font-size:13px;margin-top:24px">I video sono stati elaborati in una cartella temporanea e cancellati
 alla fine dell'analisi: non vengono conservati. Fonti dei valori di
 riferimento: medie TrackMan PGA/LPGA Tour e TrackMan Combine (velocità, smash, lancio, spin, carry);
 proporzioni antropometriche di Drillis & Contini per la calibrazione con la statura.</p>

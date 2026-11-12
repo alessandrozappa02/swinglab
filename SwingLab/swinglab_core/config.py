@@ -104,12 +104,10 @@ def livello_da_handicap(hcp):
 # Categorie del punteggio e pesi (somma 100)
 # ---------------------------------------------------------------------------
 CATEGORIE = {
-    "Setup": 15,
-    "Backswing": 20,
-    "Transizione": 15,
+    "Start": 15,       # setup
+    "Back": 35,        # backswing + transizione
     "Impatto": 25,
-    "Finish": 10,
-    "Tempo": 15,
+    "Finish": 25,      # finish + tempo (equilibrio e ritmo)
 }
 
 # Ogni metrica: categoria, peso nella categoria, banda ideale [lo, hi],
@@ -117,35 +115,35 @@ CATEGORIE = {
 # avanzato), viste da cui si calcola, unità, etichetta.
 METRICHE = {
     # --- Setup -------------------------------------------------------------
-    "inclinazione_busto": dict(cat="Setup", peso=3, ideale=(30, 45), tol=15,
+    "inclinazione_busto": dict(cat="Start", peso=3, ideale=(30, 45), tol=15,
         viste=("DTL",), unita="°", nome="Inclinazione del busto al setup"),
-    "flessione_ginocchia": dict(cat="Setup", peso=2, ideale=(15, 30), tol=15,
+    "flessione_ginocchia": dict(cat="Start", peso=2, ideale=(15, 30), tol=15,
         viste=("DTL",), unita="°", nome="Flessione delle ginocchia al setup"),
-    "distanza_palla": dict(cat="Setup", peso=2, ideale=(0, 14), tol=15,
+    "distanza_palla": dict(cat="Start", peso=2, ideale=(0, 14), tol=15,
         viste=("DTL",), unita="cm", nome="Mani rispetto alle spalle (distanza dalla palla)"),
-    "larghezza_stance": dict(cat="Setup", peso=2, ideale=(0.95, 1.35), tol=0.35,
+    "larghezza_stance": dict(cat="Start", peso=2, ideale=(0.95, 1.35), tol=0.35,
         viste=("FO", "FO2"), unita="× spalle", nome="Larghezza dei piedi"),
-    "tilt_setup": dict(cat="Setup", peso=1, ideale=(2, 12), tol=10,
+    "tilt_setup": dict(cat="Start", peso=1, ideale=(2, 12), tol=10,
         viste=("FO", "FO2"), unita="°", nome="Inclinazione laterale della colonna al setup"),
     # --- Backswing ---------------------------------------------------------
-    "rotazione_spalle": dict(cat="Backswing", peso=3, ideale=(80, 105), tol=30,
+    "rotazione_spalle": dict(cat="Back", peso=3, ideale=(80, 105), tol=30,
         viste=("FO", "FO2", "DTL"), unita="°", nome="Rotazione delle spalle al top"),
-    "rotazione_bacino": dict(cat="Backswing", peso=2, ideale=(35, 55), tol=25,
+    "rotazione_bacino": dict(cat="Back", peso=2, ideale=(35, 55), tol=25,
         viste=("FO", "FO2", "DTL"), unita="°", nome="Rotazione del bacino al top"),
-    "x_factor": dict(cat="Backswing", peso=2, ideale=(35, 55), tol=25,
+    "x_factor": dict(cat="Back", peso=2, ideale=(35, 55), tol=25,
         viste=("FO", "FO2", "DTL"), unita="°", nome="X-factor (spalle − bacino)"),
-    "sway": dict(cat="Backswing", peso=3, ideale=(-3, 5), tol=12,
+    "sway": dict(cat="Back", peso=3, ideale=(-3, 5), tol=12,
         viste=("FO", "FO2"), unita="cm", nome="Sway del bacino nel backswing"),
-    "testa_backswing": dict(cat="Backswing", peso=2, ideale=(-4, 6), tol=12,
+    "testa_backswing": dict(cat="Back", peso=2, ideale=(-4, 6), tol=12,
         viste=("FO", "FO2"), unita="cm", nome="Spostamento laterale della testa al top"),
-    "braccio_guida_top": dict(cat="Backswing", peso=2, ideale=(160, 180), tol=35,
+    "braccio_guida_top": dict(cat="Back", peso=2, ideale=(160, 180), tol=35,
         viste=("FO", "FO2"), unita="°", nome="Angolo del braccio guida al top"),
     # --- Transizione -------------------------------------------------------
-    "over_the_top": dict(cat="Transizione", peso=3, ideale=(-12, 2), tol=14,
+    "over_the_top": dict(cat="Back", peso=3, ideale=(-12, 2), tol=14,
         viste=("DTL",), unita="cm", nome="Percorso delle mani in discesa (over the top)"),
-    "sequenza": dict(cat="Transizione", peso=3, ideale=(2, 2), tol=2,
+    "sequenza": dict(cat="Back", peso=3, ideale=(2, 2), tol=2,
         viste=("FO", "FO2", "DTL"), unita="/2", nome="Sequenza cinematica"),
-    "lag": dict(cat="Transizione", peso=1, ideale=(60, 115), tol=55,
+    "lag": dict(cat="Back", peso=1, ideale=(60, 115), tol=55,
         viste=("FO", "FO2"), unita="%", nome="Angolo dei polsi mantenuto a metà discesa (lag, stima)"),
     # --- Impatto -----------------------------------------------------------
     "early_extension": dict(cat="Impatto", peso=4, ideale=(-6, 3), tol=12,
@@ -164,8 +162,8 @@ METRICHE = {
     "equilibrio": dict(cat="Finish", peso=2, ideale=(0, 3), tol=9,
         viste=("FO", "FO2", "DTL"), unita="cm", nome="Stabilità al finish (oscillazione)"),
     # --- Tempo -------------------------------------------------------------
-    "rapporto_tempo": dict(cat="Tempo", peso=3, ideale=(2.7, 3.3), tol=1.4,
+    "rapporto_tempo": dict(cat="Finish", peso=3, ideale=(2.7, 3.3), tol=1.4,
         viste=("FO", "FO2", "DTL"), unita=":1", nome="Rapporto backswing/downswing"),
-    "durata_backswing": dict(cat="Tempo", peso=1, ideale=(0.70, 1.05), tol=0.45,
+    "durata_backswing": dict(cat="Finish", peso=1, ideale=(0.70, 1.05), tol=0.45,
         viste=("FO", "FO2", "DTL"), unita="s", nome="Durata del backswing"),
 }

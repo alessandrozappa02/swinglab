@@ -108,7 +108,7 @@ def test_avviso_precisione():
 
 def test_report_html():
     html = report.genera(_analizza(), dimostrativo=True)
-    assert html.startswith("<!doctype html>") and "Cosa migliorare" in html
+    assert html.startswith("<!doctype html>") and "Esercizi di correzione" in html and "Analisi delle 4 fasi" in html
 
 
 if __name__ == "__main__":
