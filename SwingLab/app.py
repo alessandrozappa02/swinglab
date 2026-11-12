@@ -4,6 +4,7 @@ Avvio:  python -m streamlit run app.py
 """
 from __future__ import annotations
 
+import datetime as dt
 import os
 import tempfile
 
@@ -11,7 +12,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from swinglab_core import config as C
-from swinglab_core import archivio, demo, pipeline, report, video_commento
+from swinglab_core import archivio, demo, pipeline, report, taglio, video_commento
 from swinglab_core import video as V
 
 st.set_page_config(page_title="SwingLab", page_icon="⛳", layout="wide")
@@ -88,7 +89,12 @@ border:1px solid var(--linea)}
 .sl-voto{font:700 40px/1 var(--display);color:var(--flag)}
 .sl-voto span{font-size:14px;color:var(--crema2);margin-left:2px}
 [data-testid="stForm"]{border:1px solid var(--linea);background:rgba(22,58,41,.75);border-radius:16px;padding:20px 22px}
-.st-key-sl_topbar [data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;align-items:center}
+.st-key-sl_menu{position:fixed;top:calc(env(safe-area-inset-top,0px) + 58px);right:max(16px,env(safe-area-inset-right,0px));z-index:999990;width:auto!important}
+.st-key-sl_menu [data-testid="stPopover"]>div>button,.st-key-sl_menu [data-testid="stPopoverButton"],.st-key-sl_menu button{width:54px!important;height:54px!important;min-height:54px!important;padding:0!important;border-radius:50%!important;border:2px solid #0b2216!important;font-size:0!important;color:transparent!important;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><radialGradient id='g' cx='38%25' cy='32%25' r='70%25'><stop offset='0' stop-color='%23ffffff'/><stop offset='.7' stop-color='%23eef0ea'/><stop offset='1' stop-color='%23c9cec4'/></radialGradient></defs><circle cx='32' cy='32' r='30' fill='url(%23g)'/><g fill='%23b9beb4' opacity='.85'><circle cx='22' cy='18' r='2.6'/><circle cx='32' cy='15' r='2.6'/><circle cx='42' cy='18' r='2.6'/><circle cx='17' cy='27' r='2.6'/><circle cx='27' cy='25' r='2.6'/><circle cx='37' cy='25' r='2.6'/><circle cx='47' cy='27' r='2.6'/><circle cx='15' cy='37' r='2.6'/><circle cx='25' cy='34' r='2.6'/><circle cx='35' cy='34' r='2.6'/><circle cx='45' cy='36' r='2.6'/><circle cx='19' cy='46' r='2.6'/><circle cx='29' cy='43' r='2.6'/><circle cx='39' cy='43' r='2.6'/><circle cx='48' cy='45' r='2.6'/><circle cx='26' cy='52' r='2.6'/><circle cx='36' cy='52' r='2.6'/></g></svg>") center/100% no-repeat!important;box-shadow:0 4px 12px rgba(0,0,0,.45)!important}
+.st-key-sl_menu button *{display:none!important}
+.st-key-sl_menu button:hover{transform:rotate(25deg);transition:transform .25s}
+.st-key-sl_menu button:focus-visible{outline:3px solid var(--flag)!important;outline-offset:3px}
+.st-key-sl_topbar{padding-right:64px}
 .st-key-sl_topbar [data-testid="stColumn"]{min-width:0!important;width:auto!important;flex:1 1 0!important}
 .st-key-sl_topbar [data-testid="stColumn"]:last-child{display:flex;justify-content:flex-end}
 .st-key-sl_topbar [data-testid="stColumn"]:last-child>div{width:auto!important;align-items:flex-end}
@@ -215,43 +221,112 @@ def mostra_video(video_bytes, chiave):
                            mime="video/mp4", key=f"scarica_video_{chiave}")
 
 
-def salva_nello_storico(ris, html_report, dimostrativo=False, video=None):
+def salva_nello_storico(ris, html_report, dimostrativo=False, video=None, nome=None):
     u = utente()
     if not u:
         return
     try:
-        archivio.salva_swing(DB, u["id"], ris, html_report, video, dimostrativo)
+        archivio.salva_swing(DB, u["id"], ris, html_report, video, dimostrativo, nome=nome)
         st.toast("Swing salvato nel tuo storico")
     except Exception as exc:
         st.warning(f"Analisi completata, ma non sono riuscito a salvarla nello storico: {exc}")
 
 
 def barra_superiore():
-    """Riga in alto: a sinistra il ritorno al menu, a destra il menu dell'app (sempre visibile)."""
+    """In alto: a sinistra il ritorno al menu; a destra la pallina da golf che apre il menu
+    dell'app (resta fissa nell'angolo anche quando si scorre la pagina)."""
     pagina = st.session_state["pagina"]
     with st.container(key="sl_topbar"):
-        sx, dx = st.columns([3, 2])
+        if pagina != "menu":
+            if st.button("← Menu", key=f"indietro_{pagina}"):
+                vai("menu")
+        else:
+            st.markdown("<div class='sl-brand'>SwingLab</div>", unsafe_allow_html=True)
+    with st.container(key="sl_menu"):
+        with st.popover("Menu", use_container_width=False):
+            u = utente()
+            st.markdown(f"**{u['nome']}**  \n<span style='opacity:.75'>{u['email']}</span>",
+                        unsafe_allow_html=True)
+            for etichetta, dest in (("Profilo", "profilo"), ("Impostazioni", "impostazioni"),
+                                    ("Storico swing", "storico"), ("Menu principale", "menu")):
+                if st.button(etichetta, key=f"menu_{dest}_{pagina}", use_container_width=True,
+                             disabled=pagina == dest):
+                    vai(dest)
+            if st.button("Esci", key=f"menu_esci_{pagina}", use_container_width=True):
+                esci()
+
+
+def file_temporaneo(f):
+    """Copia su disco del video caricato (serve per anteprime e taglio). Una per file."""
+    cache = st.session_state.setdefault("upload_tmp", {})
+    voce = cache.get(f.file_id)
+    if voce and os.path.exists(voce):
+        return voce
+    cartella = st.session_state.get("upload_dir")
+    if not cartella or not os.path.isdir(cartella):
+        cartella = tempfile.mkdtemp(prefix="swinglab_up_")
+        st.session_state["upload_dir"] = cartella
+    path = os.path.join(cartella, f"{f.file_id}{os.path.splitext(f.name)[1].lower()}")
+    with open(path, "wb") as out:
+        out.write(f.getbuffer())
+    cache[f.file_id] = path
+    return path
+
+
+def pulisci_upload():
+    """Cancella le copie temporanee dei video caricati."""
+    import shutil
+    cartella = st.session_state.pop("upload_dir", None)
+    st.session_state.pop("upload_tmp", None)
+    if cartella:
+        shutil.rmtree(cartella, ignore_errors=True)
+
+
+def editor_taglio(v, f):
+    """Taglio di durata e inquadratura di un video. Restituisce (inizio, fine, ritaglio)."""
+    path = file_temporaneo(f)
+    inf = taglio.info(path)
+    dur = max(0.1, round(inf["durata"], 1))
+    k = f"{v}_{f.file_id}"
+    t0, t1 = st.session_state.get(f"tempo_{k}", (0.0, dur))
+    x = st.session_state.get(f"largh_{k}", (0, 100))
+    y = st.session_state.get(f"alt_{k}", (0, 100))
+    tagliato = not taglio.intero(t0, t1, dur, (x[0] / 100, x[1] / 100, y[0] / 100, y[1] / 100))
+    riassunto = (f"{t1 - t0:.1f} s su {dur:.1f} s" + (" · inquadratura ritagliata" if (x, y) != ((0, 100), (0, 100)) else "")
+                 if tagliato else f"video intero · {dur:.1f} s")
+    with st.expander(f"✂ Taglia il video {v} — {riassunto}", expanded=dur > 15):
+        if dur > 15:
+            st.info("Il video è lungo: tieni solo lo swing, da 1-2 secondi prima del takeaway "
+                    "a 1-2 secondi dopo il finish.")
+        sx, dx = st.columns([1.1, 1], gap="large")
         with sx:
-            if pagina != "menu":
-                if st.button("← Menu", key=f"indietro_{pagina}"):
-                    vai("menu")
-            else:
-                st.markdown("<div class='sl-brand'>SwingLab</div>", unsafe_allow_html=True)
+            t0, t1 = st.slider("Parte da analizzare (secondi)", 0.0, dur, (0.0, dur), step=0.1,
+                               key=f"tempo_{k}")
+            x = st.slider("Inquadratura in larghezza (%)", 0, 100, (0, 100), step=1, key=f"largh_{k}",
+                          help="Togli i bordi a sinistra e a destra: il golfer deve restare tutto dentro.")
+            y = st.slider("Inquadratura in altezza (%)", 0, 100, (0, 100), step=1, key=f"alt_{k}",
+                          help="Lascia spazio sopra la testa per il bastone al top e sotto i piedi.")
+            if x[1] - x[0] < 15 or y[1] - y[0] < 15:
+                st.warning("Inquadratura troppo stretta: allargala un po'.")
+            larg = int(inf["larghezza"] * (x[1] - x[0]) / 100)
+            alt = int(inf["altezza"] * (y[1] - y[0]) / 100)
+            st.caption(f"Risultato: {t1 - t0:.1f} s · {larg}×{alt} px "
+                       f"(originale {dur:.1f} s · {inf['larghezza']}×{inf['altezza']} px, "
+                       f"{f.size / 1e6:.0f} MB)")
         with dx:
-            with st.popover("☰ Menu", use_container_width=False):
-                u = utente()
-                st.markdown(f"**{u['nome']}**  \n<span style='opacity:.75'>{u['email']}</span>",
-                            unsafe_allow_html=True)
-                for etichetta, dest in (("Profilo", "profilo"), ("Impostazioni", "impostazioni"),
-                                        ("Storico swing", "storico"), ("Menu principale", "menu")):
-                    if st.button(etichetta, key=f"menu_{dest}_{pagina}", use_container_width=True,
-                                 disabled=pagina == dest):
-                        vai(dest)
-                if st.button("Esci", key=f"menu_esci_{pagina}", use_container_width=True):
-                    esci()
+            rit = (x[0] / 100, x[1] / 100, y[0] / 100, y[1] / 100)
+            c1, c2 = st.columns(2)
+            img = taglio.anteprima(path, t0, rit, 220)
+            if img is not None:
+                c1.image(img, caption=f"Inizio · {t0:.1f} s", use_container_width=True)
+            img = taglio.anteprima(path, max(t0, t1 - 0.05), rit, 220)
+            if img is not None:
+                c2.image(img, caption=f"Fine · {t1:.1f} s", use_container_width=True)
+    return t0, t1, (x[0] / 100, x[1] / 100, y[0] / 100, y[1] / 100)
 
 
 def esci():
+    pulisci_upload()
     st.session_state.clear()
     st.session_state["pagina"] = "home"
     st.rerun()
@@ -445,7 +520,8 @@ def pagina_storico():
         dati = archivio.carica_swing(DB, u["id"], sid)
         if dati:
             quando = next((s_["quando"] for s_ in elenco if s_["id"] == sid), None)
-            st.subheader(f"Swing del {quando:%d/%m/%Y %H:%M}" if quando else "Swing")
+            sel = next((s_ for s_ in elenco if s_["id"] == sid), {})
+            st.subheader(sel.get("nome") or (f"Swing del {quando:%d/%m/%Y %H:%M}" if quando else "Swing"))
             mostra_video(dati["video"], f"storico_{sid}")
             st.download_button("Scarica il report (HTML)", dati["report"], file_name=f"swinglab_{sid}.html",
                                mime="text/html", key=f"scarica_{sid}")
@@ -458,11 +534,17 @@ def _riga_storico(u, s_, gruppo):
     with st.container(border=True):
         c1, c2, c3 = st.columns([1, 3, 1.4])
         c1.markdown(f"<div class='sl-voto'>{s_['punteggio']}<span>/100</span></div>", unsafe_allow_html=True)
-        c2.markdown(f"**{s_['bastone']}** · {s_['quando']:%d/%m/%Y %H:%M} · viste {s_['viste']}"
+        titolo = s_.get("nome") or f"{s_['bastone']} · {s_['quando']:%d/%m %H:%M}"
+        c2.markdown(f"**{titolo}**  \n{s_['bastone']} · {s_['quando']:%d/%m/%Y %H:%M} · viste {s_['viste']}"
                     f"{' · dimostrativo' if s_['dimostrativo'] else ''}  \n"
                     f"Priorità: {s_['priorita']} · carry stimato {s_['carry']:.0f} m")
         if c3.button("Apri", key=f"apri_{k}", use_container_width=True):
             st.session_state["storico_aperto"] = sid
+        with c3.popover("Rinomina", use_container_width=True):
+            nuovo = st.text_input("Nuovo nome", value=s_.get("nome") or "", key=f"rin_txt_{k}", max_chars=80)
+            if st.button("Salva", key=f"rin_ok_{k}", type="primary"):
+                archivio.rinomina_swing(DB, u["id"], sid, nuovo)
+                st.rerun()
         if c3.button("Elimina", key=f"elimina_{k}", use_container_width=True):
             archivio.elimina_swing(DB, u["id"], sid)
             if st.session_state.get("storico_aperto") == sid:
@@ -496,6 +578,8 @@ def pagina_analisi():
             lm_club = st.number_input("Velocità bastone (km/h)", 0.0, 300.0, 0.0, step=1.0, key="lm_club")
             lm_ball = st.number_input("Velocità palla (km/h)", 0.0, 350.0, 0.0, step=1.0, key="lm_ball")
             lm_carry = st.number_input("Carry (m)", 0.0, 350.0, 0.0, step=1.0, key="lm_carry")
+    nome_swing = st.text_input("Nome dello swing (facoltativo)", key="nome_swing", max_chars=80,
+                               placeholder=f"es. {bastone} – campo pratica, lavoro sul backswing")
     mancino = bool(pref.get("mancino"))
     hcp = None if pref.get("principiante") else float(pref.get("handicap", 18.0))
     altezza = pref.get("altezza_cm", 178)
@@ -576,6 +660,11 @@ def pagina_analisi():
                                                "indica qui il frame rate reale di ripresa (es. 240).")
                     fps_manuali[v] = fps or None
 
+        tagli = {}
+        if caricati:
+            st.markdown("<div class='sl-passo'>Taglia i video (facoltativo)</div>", unsafe_allow_html=True)
+            for v, f in caricati.items():
+                tagli[v] = editor_taglio(v, f)
         if caricati and len(caricati) < 3:
             st.warning(pipeline.AVVISO_PRECISIONE[len(caricati)])
         if caricati:
@@ -594,12 +683,13 @@ def pagina_analisi():
             with st.spinner("Analizzo lo swing dimostrativo…"):
                 tr = demo.tracce(("A", "C"))
                 ris = pipeline.analizza_tracce(tr, profilo)
-                st.session_state["report"] = report.genera(ris, dimostrativo=True)
+                nome = nome_swing.strip() or "Swing dimostrativo"
+                st.session_state["report"] = report.genera(ris, dimostrativo=True, nome_swing=nome)
                 st.session_state["nome_report"] = "swinglab_report_dimostrativo.html"
             with st.spinner("Preparo il video commentato…"):
                 st.session_state["video"] = crea_video_commento(ris)
             salva_nello_storico(ris, st.session_state["report"], dimostrativo=True,
-                                video=st.session_state["video"])
+                                video=st.session_state["video"], nome=nome)
 
         if vai:
             barra = st.progress(0.0, text="Preparo i video…")
@@ -610,9 +700,14 @@ def pagina_analisi():
                     percorsi, errori = {}, False
                     avvisi = {}
                     for v, f in caricati.items():
-                        path = os.path.join(tmp, f"video_{v}{os.path.splitext(f.name)[1].lower()}")
-                        with open(path, "wb") as out:
-                            out.write(f.getbuffer())
+                        orig = file_temporaneo(f)
+                        t0, t1, rit = tagli[v]
+                        if taglio.intero(t0, t1, taglio.info(orig)["durata"], rit):
+                            path = orig
+                        else:
+                            progress(f"Taglio il video {v}…", 0.02)
+                            path = os.path.join(tmp, f"video_{v}.mp4")
+                            taglio.applica(orig, path, t0, t1, rit)
                         esito = V.valida_file(path, f.name, fps_manuali.get(v))
                         for e in esito["errori"]:
                             st.error(f"Video {v}: {e}")
@@ -626,15 +721,19 @@ def pagina_analisi():
                         for v, av in avvisi.items():
                             ris["avvisi"].setdefault(v, [])[:0] = av
                         progress("Scrivo il report…", 1.0)
-                        st.session_state["report"] = report.genera(ris)
+                        nome = nome_swing.strip() or f"{bastone} · {dt.datetime.now():%d/%m %H:%M}"
+                        st.session_state["report"] = report.genera(ris, nome_swing=nome)
                         st.session_state["nome_report"] = "swinglab_report.html"
                         # il video va creato qui, finché i file originali esistono ancora
                         st.session_state["video"] = crea_video_commento(ris, progress)
-                        salva_nello_storico(ris, st.session_state["report"], video=st.session_state["video"])
-                # qui la cartella temporanea e i video sono già stati cancellati
+                        salva_nello_storico(ris, st.session_state["report"], video=st.session_state["video"],
+                                            nome=nome)
+                # qui la cartella temporanea è già stata cancellata; poi anche le copie dei caricamenti
+                pulisci_upload()
                 barra.empty()
             except Exception as exc:  # messaggio comprensibile all'utente
                 barra.empty()
+                pulisci_upload()
                 st.error(f"Analisi non riuscita: {exc}")
 
         if "report" in st.session_state:

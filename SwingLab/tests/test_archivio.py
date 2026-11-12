@@ -72,6 +72,23 @@ def test_profilo_ricordato_ed_elimina_account():
     assert archivio.conta_swing(db, u["id"]) == 0
 
 
+def test_nome_swing_e_vecchio_database():
+    import sqlalchemy as sa
+    d = tempfile.mkdtemp()
+    url = f"sqlite:///{d}/vecchio.db"
+    # database creato dalla versione precedente, senza la colonna "nome"
+    with sa.create_engine(url).begin() as c:
+        c.execute(sa.text("CREATE TABLE swing (id INTEGER PRIMARY KEY, utente_id INTEGER, quando DATETIME)"))
+    db = archivio.crea_motore(url)
+    assert "nome" in {c["name"] for c in sa.inspect(db).get_columns("swing")}
+    db2 = _db()
+    u = archivio.registra(db2, "a@b.it", "password123")
+    sid = archivio.salva_swing(db2, u["id"], _ris(), "x", None, nome="Driver – lavoro sul finish")
+    assert archivio.elenco_swing(db2, u["id"])[0]["nome"] == "Driver – lavoro sul finish"
+    archivio.rinomina_swing(db2, u["id"], sid, "Driver buono")
+    assert archivio.elenco_swing(db2, u["id"])[0]["nome"] == "Driver buono"
+
+
 if __name__ == "__main__":
     test = [v for k, v in dict(globals()).items() if k.startswith("test_")]
     for t in test:

@@ -24,7 +24,7 @@ from pathlib import Path
 
 from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer, LargeBinary,
                         MetaData, String, Table, Text, create_engine, delete, func, insert,
-                        select, update)
+                        inspect, select, text, update)
 
 ITERAZIONI = 310_000
 PASSWORD_MIN = 8
@@ -50,6 +50,7 @@ swing = Table(
     Column("utente_id", Integer, ForeignKey("utenti.id", ondelete="CASCADE"), index=True,
            nullable=False),
     Column("quando", DateTime, nullable=False),
+    Column("nome", String(80)),                   # nome dato dall'utente allo swing
     Column("punteggio", Integer),
     Column("bastone", String(40)),
     Column("viste", String(20)),
@@ -84,7 +85,16 @@ def crea_motore(url: str):
         kw["connect_args"] = {"check_same_thread": False}
     motore = create_engine(url, **kw)
     meta.create_all(motore)
+    _aggiorna_tabelle(motore)
     return motore
+
+
+def _aggiorna_tabelle(motore):
+    """Aggiunge le colonne nate dopo la prima versione (i dati esistenti restano)."""
+    colonne = {c["name"] for c in inspect(motore).get_columns("swing")}
+    with motore.begin() as c:
+        if "nome" not in colonne:
+            c.execute(text("ALTER TABLE swing ADD COLUMN nome VARCHAR(80)"))
 
 
 # ---------------------------------------------------------------------------
@@ -152,11 +162,12 @@ def elimina_account(motore, utente_id: int):
 # ---------------------------------------------------------------------------
 
 def salva_swing(motore, utente_id: int, ris: dict, report_html: str, video: bytes | None,
-                dimostrativo=False) -> int:
+                dimostrativo=False, nome: str | None = None) -> int:
     with motore.begin() as c:
         r = c.execute(insert(swing).values(
             utente_id=utente_id,
             quando=dt.datetime.now(),
+            nome=(nome or "").strip()[:80] or None,
             punteggio=int(ris["punteggi"]["totale"]),
             bastone=ris["profilo"].bastone,
             viste=", ".join(ris["tracce"].keys()),
@@ -171,7 +182,7 @@ def salva_swing(motore, utente_id: int, ris: dict, report_html: str, video: byte
 
 def elenco_swing(motore, utente_id: int) -> list[dict]:
     """Elenco senza i contenuti pesanti (report e video si caricano a richiesta)."""
-    q = (select(swing.c.id, swing.c.quando, swing.c.punteggio, swing.c.bastone, swing.c.viste,
+    q = (select(swing.c.id, swing.c.quando, swing.c.nome, swing.c.punteggio, swing.c.bastone, swing.c.viste,
                 swing.c.priorita, swing.c.carry, swing.c.dimostrativo,
                 (swing.c.video.isnot(None)).label("ha_video"))
          .where(swing.c.utente_id == utente_id).order_by(swing.c.quando.desc()))
@@ -220,3 +231,9 @@ def cambia_password(motore, utente_id: int, attuale: str, nuova: str):
         sale = secrets.token_bytes(16)
         c.execute(update(utenti).where(utenti.c.id == utente_id)
                   .values(sale=sale, impronta=_impronta(nuova, sale)))
+
+
+def rinomina_swing(motore, utente_id: int, swing_id: int, nome: str):
+    with motore.begin() as c:
+        c.execute(update(swing).where(swing.c.id == swing_id, swing.c.utente_id == utente_id)
+                  .values(nome=(nome or "").strip()[:80] or None))

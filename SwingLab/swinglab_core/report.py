@@ -199,7 +199,7 @@ details.appro h2{font-size:18px}
 """
 
 
-def genera(r, titolo="Report SwingLab", dimostrativo=False) -> str:
+def genera(r, titolo="Report SwingLab", dimostrativo=False, nome_swing=None) -> str:
     p = r["profilo"]
     pt = r["punteggi"]
     volo = r["volo"]
@@ -490,7 +490,7 @@ usa le tolleranze di un giocatore avanzato: è il numero da confrontare tra gioc
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{E(titolo)}</title>
 <style>{CSS}</style></head><body><div class="wrap">
 <p class="sub" style="font-weight:600;color:var(--brand);letter-spacing:.04em">SWINGLAB</p>
-<h1>Analisi del tuo swing</h1>
+<h1>{E(nome_swing) if nome_swing else "Analisi del tuo swing"}</h1>
 <p class="sub">{oggi} · golfer {lato}, {E(hcp)} · statura {E(alt)} · bastone {E(p.bastone)} · viste {", ".join(viste)}</p>
 {banner}
 <h2>Analisi delle 4 fasi</h2>

@@ -46,7 +46,7 @@ def valida_file(path, nome_file: str, fps_manuale: float | None = None) -> dict:
         errori.append("Il video è troppo corto o danneggiato.")
     if info["durata"] > C.DURATA_MAX_FILE_S or info["frames"] > C.FRAME_MAX:
         errori.append(f"Il video è troppo lungo ({info['durata']:.0f} s, {info['frames']} fotogrammi). "
-                      "Taglialo intorno allo swing: bastano 1-2 secondi prima e dopo.")
+                      "Accorcialo con \"Taglia il video\": bastano 1-2 secondi prima e dopo lo swing.")
     elif info["durata"] > C.DURATA_MAX_S:
         avvisi.append(f"Il video dura {info['durata']:.0f} s. Se è uno slow motion va bene; "
                       "altrimenti taglialo intorno allo swing per un'analisi più rapida.")
