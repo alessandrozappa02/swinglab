@@ -1,0 +1,5 @@
+swinglab.db
+.streamlit/secrets.toml
+.venv/
+__pycache__/
+models/*.task

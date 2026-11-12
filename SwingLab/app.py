@@ -11,7 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from swinglab_core import config as C
-from swinglab_core import demo, pipeline, report, video_commento
+from swinglab_core import archivio, demo, pipeline, report, video_commento
 from swinglab_core import video as V
 
 st.set_page_config(page_title="SwingLab", page_icon="⛳", layout="wide")
@@ -154,10 +154,30 @@ def hero(titolo="SwingLab", eyebrow="Analisi dello swing · P1–P10",
 
 
 # ---------------------------------------------------------------------------
-# Navigazione: home (benvenuto + login) → menu → carica swing / storico
+# Archivio (utenti e swing) e navigazione
+# home (accesso / registrazione) → menu → carica swing / storico
 # ---------------------------------------------------------------------------
+def _segreti():
+    try:
+        return dict(st.secrets)
+    except Exception:            # nessun file secrets.toml: si usa il database locale
+        return {}
+
+
+@st.cache_resource(show_spinner=False)
+def motore_db(url):
+    return archivio.crea_motore(url)
+
+
+URL_DB = archivio.url_database(_segreti())
+DB = motore_db(URL_DB)
+DB_PERMANENTE = archivio.e_permanente(URL_DB)
+
 st.session_state.setdefault("pagina", "home")
-st.session_state.setdefault("storico", [])
+
+
+def utente():
+    return st.session_state.get("utente")
 
 
 def vai(pagina):
@@ -188,18 +208,14 @@ def mostra_video(video_bytes, chiave):
 
 
 def salva_nello_storico(ris, html_report, dimostrativo=False, video=None):
-    import datetime as dt
-    st.session_state["storico"].insert(0, dict(
-        quando=dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
-        punteggio=ris["punteggi"]["totale"],
-        bastone=ris["profilo"].bastone,
-        viste=", ".join(ris["tracce"].keys()),
-        priorita=ris["difetti"][0]["titolo"] if ris["difetti"] else "Nessun difetto rilevante",
-        carry=ris["volo"]["carry"]["m"],
-        dimostrativo=dimostrativo,
-        report=html_report,
-        video=video,
-    ))
+    u = utente()
+    if not u:
+        return
+    try:
+        archivio.salva_swing(DB, u["id"], ris, html_report, video, dimostrativo)
+        st.toast("Swing salvato nel tuo storico")
+    except Exception as exc:
+        st.warning(f"Analisi completata, ma non sono riuscito a salvarla nello storico: {exc}")
 
 
 def barra_indietro(etichetta="← Menu", dove="menu"):
@@ -207,21 +223,55 @@ def barra_indietro(etichetta="← Menu", dove="menu"):
         vai(dove)
 
 
+def _entra(u):
+    st.session_state["utente"] = u
+    for k in ("report", "video", "storico_aperto", "login_password", "reg_password", "reg_password2"):
+        st.session_state.pop(k, None)
+    vai("menu")
+
+
 def pagina_home():
     hero(eyebrow="Benvenuto", titolo="Il tuo maestro di swing, in tasca",
          testo="SwingLab analizza i video del tuo swing e ti dice cosa va bene, cosa migliorare "
-               "e quali esercizi fare. Accedi per iniziare.")
+               "e quali esercizi fare. Accedi per ritrovare il tuo profilo e i tuoi swing.")
     sx, dx = st.columns([1, 1.15], gap="large")
     with sx:
-        with st.form("login"):
-            st.markdown("<h3 style='margin-top:0'>Accedi</h3>", unsafe_allow_html=True)
-            st.text_input("Email", key="login_email", placeholder="nome@email.it")
-            st.text_input("Password", type="password", key="login_password")
-            entra = st.form_submit_button("Accedi", type="primary", use_container_width=True)
-            st.caption("Versione di prova: l'accesso non richiede ancora un account.")
-        if entra:
-            st.session_state["utente"] = (st.session_state.get("login_email") or "").split("@")[0]
-            vai("menu")
+        t_accedi, t_registra = st.tabs(["Accedi", "Crea account"])
+        with t_accedi:
+            with st.form("login"):
+                st.text_input("Email", key="login_email", placeholder="nome@email.it")
+                st.text_input("Password", type="password", key="login_password")
+                entra = st.form_submit_button("Accedi", type="primary", use_container_width=True)
+            if entra:
+                try:
+                    _entra(archivio.accedi(DB, st.session_state.get("login_email", ""),
+                                           st.session_state.get("login_password", "")))
+                except archivio.ErroreAccount as e:
+                    st.error(str(e))
+            st.caption("Prima volta? Apri la scheda \"Crea account\".")
+        with t_registra:
+            with st.form("registrazione"):
+                st.text_input("Nome", key="reg_nome", placeholder="Come vuoi essere chiamato")
+                st.text_input("Email", key="reg_email", placeholder="nome@email.it")
+                st.text_input(f"Password (almeno {archivio.PASSWORD_MIN} caratteri)", type="password",
+                              key="reg_password")
+                st.text_input("Ripeti la password", type="password", key="reg_password2")
+                ok_privacy = st.checkbox("Accetto che i miei swing (report e video commentato) vengano "
+                                         "salvati nel mio account. Posso cancellarli quando voglio.",
+                                         key="reg_privacy")
+                crea = st.form_submit_button("Crea account", type="primary", use_container_width=True)
+            if crea:
+                ss = st.session_state
+                if ss.get("reg_password") != ss.get("reg_password2"):
+                    st.error("Le due password non coincidono.")
+                elif not ok_privacy:
+                    st.error("Per salvare i tuoi swing serve il consenso qui sopra.")
+                else:
+                    try:
+                        _entra(archivio.registra(DB, ss.get("reg_email", ""), ss.get("reg_password", ""),
+                                                 ss.get("reg_nome", "")))
+                    except archivio.ErroreAccount as e:
+                        st.error(str(e))
     with dx:
         st.markdown("""
 <div class="sl-card">
@@ -230,15 +280,17 @@ def pagina_home():
     <li><b>Riprendi</b> lo swing con il telefono, meglio in slow motion.</li>
     <li><b>Carica</b> da 1 a 3 video: laterale, lato opposto, da dietro.</li>
     <li><b>Ricevi</b> punteggio, stima del volo della palla e un piano di allenamento.</li>
+    <li><b>Ritrova</b> tutti i tuoi swing nello storico, ogni volta che accedi.</li>
   </ol>
 </div>""", unsafe_allow_html=True)
+        if not DB_PERMANENTE:
+            st.caption("Nota: questa installazione usa un archivio locale (nessun database collegato).")
 
 
 def pagina_menu():
-    nome = st.session_state.get("utente") or ""
-    hero(eyebrow="Club house", titolo=f"Ciao{(' ' + nome) if nome else ''}!",
-         testo="Cosa vuoi fare oggi?", numeri=False)
-    n = len(st.session_state["storico"])
+    u = utente()
+    hero(eyebrow="Club house", titolo=f"Ciao {u['nome']}!", testo="Cosa vuoi fare oggi?", numeri=False)
+    n = archivio.conta_swing(DB, u["id"])
     sx, dx = st.columns(2, gap="large")
     with sx:
         st.markdown("""
@@ -252,41 +304,66 @@ def pagina_menu():
     with dx:
         st.markdown(f"""
 <div class="sl-scelta"><div class="ico"><svg viewBox="0 0 40 40" width="34" height="34" aria-hidden="true"><rect x="7" y="5" width="26" height="31" rx="3" fill="#f1ecd9"/><g stroke="#1f5a3c" stroke-width="2"><line x1="12" y1="13" x2="28" y2="13"/><line x1="12" y1="19" x2="28" y2="19"/><line x1="12" y1="25" x2="22" y2="25"/></g><circle cx="27" cy="27" r="5" fill="#f2c94c"/></svg></div><h3>Storico dei tuoi swing</h3>
-<p>{n} swing analizzat{'o' if n == 1 else 'i'} in questa sessione. Rivedi i report e i punteggi.</p></div>""",
+<p>{n} swing salvat{'o' if n == 1 else 'i'} nel tuo account. Rivedi report, video e punteggi.</p></div>""",
                     unsafe_allow_html=True)
         if st.button("Storico dei tuoi swing", use_container_width=True, key="vai_storico"):
             vai("storico")
     st.write("")
-    if st.button("Esci", key="esci"):
-        st.session_state.pop("utente", None)
-        vai("home")
+    c1, c2 = st.columns([1, 3])
+    if c1.button("Esci", key="esci"):
+        st.session_state.clear()
+        st.session_state["pagina"] = "home"
+        st.rerun()
+    with c2.expander("Account"):
+        st.write(f"Connesso come **{u['email']}**")
+        st.caption("Eliminando l'account cancelli definitivamente il profilo e tutti i tuoi swing.")
+        conferma = st.checkbox("Sì, voglio eliminare il mio account e tutti i dati", key="conferma_elimina")
+        if st.button("Elimina account", disabled=not conferma, key="elimina_account"):
+            archivio.elimina_account(DB, u["id"])
+            st.session_state.clear()
+            st.session_state["pagina"] = "home"
+            st.rerun()
 
 
 def pagina_storico():
+    u = utente()
     barra_indietro()
     hero(eyebrow="Scorecard", titolo="Storico dei tuoi swing",
-         testo="I report che hai generato. Per ora restano finché la pagina è aperta: "
-               "il salvataggio permanente arriverà con gli account.", numeri=False)
-    storico = st.session_state["storico"]
-    if not storico:
+         testo="Tutti gli swing salvati nel tuo account, dal più recente.", numeri=False)
+    elenco = archivio.elenco_swing(DB, u["id"])
+    if not elenco:
         st.info("Non hai ancora analizzato nessuno swing. Torna al menu e scegli \"Carica nuovo swing\".")
         return
-    for i, s in enumerate(storico):
+    if len(elenco) >= 2:
+        punti = [s["punteggio"] for s in reversed(elenco)]
+        st.caption(f"Andamento del punteggio: da {punti[0]} a {punti[-1]} "
+                   f"({punti[-1] - punti[0]:+d}) in {len(punti)} swing.")
+        st.line_chart({"Punteggio": punti}, height=160)
+    for s in elenco:
+        sid = s["id"]
         with st.container(border=True):
             c1, c2, c3 = st.columns([1, 3, 1.4])
             c1.markdown(f"<div class='sl-voto'>{s['punteggio']}<span>/100</span></div>", unsafe_allow_html=True)
-            c2.markdown(f"**{s['quando']}** · {s['bastone']} · viste {s['viste']}"
+            c2.markdown(f"**{s['quando']:%d/%m/%Y %H:%M}** · {s['bastone']} · viste {s['viste']}"
                         f"{' · dimostrativo' if s['dimostrativo'] else ''}  \n"
                         f"Priorità: {s['priorita']} · carry stimato {s['carry']:.0f} m")
-            if c3.button("Apri report", key=f"apri_{i}", use_container_width=True):
-                st.session_state["storico_aperto"] = i
-            c3.download_button("Scarica", s["report"], file_name=f"swinglab_{i + 1}.html",
-                               mime="text/html", key=f"scarica_{i}", use_container_width=True)
-    j = st.session_state.get("storico_aperto")
-    if j is not None and j < len(storico):
-        st.subheader(f"Report del {storico[j]['quando']}")
-        mostra_video(storico[j].get("video"), f"storico_{j}")
-        mostra_report(storico[j]["report"])
+            if c3.button("Apri", key=f"apri_{sid}", use_container_width=True):
+                st.session_state["storico_aperto"] = sid
+            if c3.button("Elimina", key=f"elimina_{sid}", use_container_width=True):
+                archivio.elimina_swing(DB, u["id"], sid)
+                if st.session_state.get("storico_aperto") == sid:
+                    st.session_state.pop("storico_aperto")
+                st.rerun()
+    sid = st.session_state.get("storico_aperto")
+    if sid is not None:
+        dati = archivio.carica_swing(DB, u["id"], sid)
+        if dati:
+            quando = next((s["quando"] for s in elenco if s["id"] == sid), None)
+            st.subheader(f"Report del {quando:%d/%m/%Y %H:%M}" if quando else "Report")
+            mostra_video(dati["video"], f"storico_{sid}")
+            st.download_button("Scarica il report (HTML)", dati["report"], file_name=f"swinglab_{sid}.html",
+                               mime="text/html", key=f"scarica_{sid}")
+            mostra_report(dati["report"])
 
 
 def mostra_report(html):
@@ -300,23 +377,35 @@ def pagina_analisi():
     # ---------------------------------------------------------------------------
     # Barra laterale: profilo
     # ---------------------------------------------------------------------------
+    u = utente()
+    pref = u.get("profilo") or {}
+    bastoni = list(C.BASTONI.keys())
     with st.sidebar:
         st.header("Il tuo profilo")
-        mano = st.radio("Mano", ["Destro", "Mancino"], horizontal=True)
-        bastone = st.selectbox("Bastone usato", list(C.BASTONI.keys()), index=list(C.BASTONI).index("Ferro 7"))
-        livello = st.radio("Livello", ["Ho un handicap", "Principiante (senza handicap)"])
+        st.caption(f"{u['nome']} · le scelte vengono ricordate per la prossima volta")
+        mano = st.radio("Mano", ["Destro", "Mancino"], horizontal=True,
+                        index=1 if pref.get("mancino") else 0)
+        bastone = st.selectbox("Bastone usato", bastoni,
+                               index=bastoni.index(pref.get("bastone")) if pref.get("bastone") in bastoni
+                               else bastoni.index("Ferro 7"))
+        livello = st.radio("Livello", ["Ho un handicap", "Principiante (senza handicap)"],
+                           index=1 if pref.get("principiante") else 0)
         hcp = None
         if livello == "Ho un handicap":
-            hcp = st.number_input("Handicap", min_value=0.0, max_value=54.0, value=18.0, step=0.1)
-        nota_alt = st.checkbox("Inserisco la mia statura (stime più precise)", value=True)
-        altezza = st.number_input("Statura (cm)", 140, 210, 178) if nota_alt else None
+            hcp = st.number_input("Handicap", min_value=0.0, max_value=54.0,
+                                  value=float(pref.get("handicap", 18.0)), step=0.1)
+        nota_alt = st.checkbox("Inserisco la mia statura (stime più precise)",
+                               value=pref.get("altezza_cm", 178) is not None)
+        altezza = (st.number_input("Statura (cm)", 140, 210, int(pref.get("altezza_cm") or 178))
+                   if nota_alt else None)
         with st.expander("Dati di un launch monitor (facoltativo)"):
             st.caption("Se li hai, servono a confrontare e correggere le stime.")
             lm_club = st.number_input("Velocità bastone (km/h)", 0.0, 300.0, 0.0, step=1.0)
             lm_ball = st.number_input("Velocità palla (km/h)", 0.0, 350.0, 0.0, step=1.0)
             lm_carry = st.number_input("Carry (m)", 0.0, 350.0, 0.0, step=1.0)
         st.divider()
-        st.caption("I video servono solo per l'analisi e vengono cancellati subito dopo: non li salviamo.")
+        st.caption("I video originali vengono cancellati subito dopo l'analisi. Nel tuo account restano "
+                   "il report e il video commentato, che puoi eliminare dallo storico.")
 
     mancino = mano == "Mancino"
     launch = {k: v for k, v in {
@@ -325,6 +414,11 @@ def pagina_analisi():
         "carry_m": lm_carry or None}.items() if v}
     profilo = pipeline.Profilo(mancino=mancino, bastone=bastone, altezza_cm=altezza,
                                handicap=hcp, launch_monitor=launch)
+    nuove_pref = dict(mancino=mancino, bastone=bastone, principiante=hcp is None,
+                      handicap=hcp if hcp is not None else pref.get("handicap", 18.0), altezza_cm=altezza)
+    if nuove_pref != pref:
+        archivio.salva_profilo(DB, u["id"], nuove_pref)
+        u["profilo"] = nuove_pref
 
     barra_indietro()
     hero()
@@ -358,7 +452,12 @@ def pagina_analisi():
       del report. Non viene salvato né riutilizzato. Il server è gestito da Snowflake, con sede negli Stati Uniti.
     - **Se usi l'app sul tuo PC** (`localhost`): il video non lascia mai il computer.
 
-    In entrambi i casi l'unico download è il modello di posa di MediaPipe, dai server di Google. Il report
+    **Cosa resta nel tuo account.** Per ogni swing: punteggio, dati principali, il report e il video
+    commentato (che contiene fotogrammi del tuo swing). Restano finché non li elimini dallo storico; da
+    *Menu › Account* puoi cancellare l'account e tutti i dati. La password non viene mai salvata: si
+    conserva solo un'impronta cifrata (PBKDF2), da cui non si può risalire alla password.
+
+    L'unico download esterno è il modello di posa di MediaPipe, dai server di Google. Il report
     scaricabile contiene fotogrammi del video: conservalo e condividilo come faresti con una tua foto.
     Le statistiche d'uso di Streamlit sono disattivate nel file `.streamlit/config.toml`.
     Non caricare video di altre persone senza il loro consenso (per i minori serve quello dei genitori).
@@ -456,4 +555,6 @@ def pagina_analisi():
 
 
 PAGINE = {"home": pagina_home, "menu": pagina_menu, "analisi": pagina_analisi, "storico": pagina_storico}
+if not utente():
+    st.session_state["pagina"] = "home"
 PAGINE.get(st.session_state["pagina"], pagina_home)()
